@@ -1,0 +1,562 @@
+# Pre-Launch Security Audit Checklist
+
+**Project**: Healthcare CRM and LiveChat Platform  
+**Audit Date**: ___ / ___ / 2025  
+**Auditor**: ________________________  
+**Version**: 2.1
+
+---
+
+## Audit Summary
+
+| Category | Total Items | Passed | Failed | N/A | Score |
+|----------|-------------|--------|--------|-----|-------|
+| Infrastructure Security | 25 | ___ | ___ | ___ | ___% |
+| Application Security | 30 | ___ | ___ | ___ | ___% |
+| Database Security | 20 | ___ | ___ | ___ | ___% |
+| API Security | 25 | ___ | ___ | ___ | ___% |
+| LGPD Compliance | 30 | ___ | ___ | ___ | ___% |
+| Operational Security | 20 | ___ | ___ | ___ | ___% |
+| **TOTAL** | **150** | ___ | ___ | ___ | **___%** |
+
+**Pass Threshold**: 95% (Critical items must be 100%)
+
+---
+
+## 1. Infrastructure Security (25 items)
+
+### 1.1 Server Hardening
+- [ ] ✅ **CRITICAL** Ubuntu 22.04 LTS with latest security patches installed
+- [ ] ✅ **CRITICAL** SSH configured for key-only authentication (no passwords)
+- [ ] ✅ **CRITICAL** Root login disabled
+- [ ] ✅ Firewall (ufw) enabled and configured
+  ```bash
+  sudo ufw status
+  # Expected: 22/tcp, 80/tcp, 443/tcp ALLOW
+  ```
+- [ ] ✅ Fail2ban installed and configured
+  ```bash
+  sudo fail2ban-client status sshd
+  # Expected: Active with banned IPs list
+  ```
+- [ ] ✅ Automatic security updates enabled
+  ```bash
+  cat /etc/apt/apt.conf.d/50unattended-upgrades
+  # Expected: Unattended-Upgrade::Automatic-Reboot "false";
+  ```
+- [ ] ⚠️ Non-standard SSH port configured (optional but recommended)
+- [ ] ✅ System logs rotated and retained (30 days minimum)
+- [ ] ✅ NTP configured for accurate timestamps
+- [ ] ✅ Unused services disabled
+
+**Score**: ___ / 10
+
+### 1.2 Docker Security
+- [ ] ✅ **CRITICAL** Docker installed from official repository (not snap)
+- [ ] ✅ **CRITICAL** Docker daemon configured with `userns-remap`
+- [ ] ✅ Docker containers run as non-root users
+- [ ] ✅ Docker secrets used for sensitive data (not environment variables)
+- [ ] ✅ Container images scanned for vulnerabilities (Trivy/Snyk)
+  ```bash
+  trivy image your-registry/bridge:latest
+  # Expected: 0 HIGH, 0 CRITICAL vulnerabilities
+  ```
+- [ ] ✅ Resource limits configured for all containers
+- [ ] ✅ Health checks configured for all services
+- [ ] ✅ Restart policies set to `unless-stopped`
+- [ ] ✅ Docker networks properly isolated (internal vs external)
+- [ ] ✅ Volumes encrypted at rest
+
+**Score**: ___ / 10
+
+### 1.3 SSL/TLS Configuration
+- [ ] ✅ **CRITICAL** HTTPS enforced (HTTP redirects to HTTPS)
+- [ ] ✅ **CRITICAL** Valid SSL certificates installed (Let's Encrypt)
+- [ ] ✅ **CRITICAL** TLS 1.2+ only (TLS 1.0/1.1 disabled)
+- [ ] ✅ SSL Labs test grade A or A+
+  ```
+  https://www.ssllabs.com/ssltest/analyze.html?d=yourdomain.com
+  # Expected: A+ rating
+  ```
+- [ ] ✅ HSTS header configured (max-age=31536000)
+
+**Score**: ___ / 5
+
+---
+
+## 2. Application Security (30 items)
+
+### 2.1 Authentication & Authorization
+- [ ] ✅ **CRITICAL** JWT tokens expire after 60 minutes
+- [ ] ✅ **CRITICAL** Token refresh mechanism implemented
+- [ ] ✅ **CRITICAL** Password complexity requirements enforced (min 12 chars, mixed case, numbers, symbols)
+- [ ] ✅ **CRITICAL** Passwords hashed with bcrypt (cost factor ≥ 12)
+- [ ] ✅ Two-factor authentication (2FA) available for admin users
+- [ ] ✅ Failed login attempts limited (5 attempts = 15-minute lockout)
+- [ ] ✅ Account lockout after repeated failures
+- [ ] ✅ Session timeout configured (60 minutes idle)
+- [ ] ✅ Role-based access control (RBAC) implemented
+- [ ] ✅ Principle of least privilege enforced
+- [ ] ✅ Admin panel protected by additional authentication layer
+
+**Score**: ___ / 11
+
+### 2.2 Input Validation & Sanitization
+- [ ] ✅ **CRITICAL** All user inputs validated (backend + frontend)
+- [ ] ✅ **CRITICAL** SQL injection prevention (prepared statements/ORM only)
+- [ ] ✅ **CRITICAL** XSS prevention (DOMPurify in Vue components)
+  ```javascript
+  // Test: Insert <script>alert('XSS')</script> in message field
+  // Expected: Sanitized or escaped
+  ```
+- [ ] ✅ **CRITICAL** CSRF protection enabled (Laravel CSRF tokens)
+- [ ] ✅ File upload validation (type, size, content)
+- [ ] ✅ Maximum request size enforced (1MB for webhooks)
+- [ ] ✅ Input length limits enforced
+- [ ] ✅ Special characters escaped in outputs
+- [ ] ✅ JSON input validation with schema
+
+**Score**: ___ / 10
+
+### 2.3 Session Management
+- [ ] ✅ **CRITICAL** Sessions stored in Redis (not filesystem)
+- [ ] ✅ **CRITICAL** Session IDs regenerated after login
+- [ ] ✅ Secure flag set on cookies (HTTPS only)
+- [ ] ✅ HttpOnly flag set on session cookies
+- [ ] ✅ SameSite attribute set to Strict/Lax
+- [ ] ✅ Session fixation prevention implemented
+- [ ] ✅ Logout invalidates session completely
+
+**Score**: ___ / 7
+
+### 2.4 Error Handling & Logging
+- [ ] ✅ **CRITICAL** Error messages don't reveal sensitive information
+- [ ] ✅ Stack traces disabled in production
+- [ ] ✅ All errors logged with context
+- [ ] ✅ Sensitive data (passwords, tokens) never logged
+- [ ] ✅ Log files protected (not publicly accessible)
+
+**Score**: ___ / 5
+
+---
+
+## 3. Database Security (20 items)
+
+### 3.1 Access Control
+- [ ] ✅ **CRITICAL** Database not accessible from internet
+- [ ] ✅ **CRITICAL** Strong database passwords (20+ chars, random)
+- [ ] ✅ **CRITICAL** Separate database users for each application
+- [ ] ✅ Database users have minimal required privileges
+- [ ] ✅ Root/postgres user not used by applications
+- [ ] ✅ Connection encryption enabled (SSL/TLS)
+- [ ] ✅ Connection string stored in environment variables (not code)
+
+**Score**: ___ / 7
+
+### 3.2 Data Protection
+- [ ] ✅ **CRITICAL** Sensitive data encrypted at rest
+- [ ] ✅ **CRITICAL** Medical data field-level encryption (AES-256)
+  ```sql
+  SELECT encrypted_column FROM leads WHERE id = 1;
+  -- Expected: Encrypted gibberish, not plain text
+  ```
+- [ ] ✅ Encryption keys stored separately from database
+- [ ] ✅ Database backups encrypted
+- [ ] ✅ Backups stored off-site (separate location)
+- [ ] ✅ Backup restoration tested in last 30 days
+
+**Score**: ___ / 6
+
+### 3.3 Query Security
+- [ ] ✅ **CRITICAL** No raw SQL queries (ORM only)
+- [ ] ✅ Prepared statements used for all dynamic queries
+- [ ] ✅ Query result sets limited (pagination enforced)
+- [ ] ✅ Query timeouts configured
+- [ ] ✅ Slow query logging enabled
+- [ ] ✅ Database indexes optimized
+
+**Score**: ___ / 6
+
+### 3.4 Audit & Monitoring
+- [ ] ✅ **CRITICAL** All data access logged (LGPD requirement)
+- [ ] ✅ Database activity monitored for anomalies
+- [ ] ✅ Failed login attempts to database logged
+- [ ] ✅ Schema changes logged
+
+**Score**: ___ / 4
+
+---
+
+## 4. API Security (25 items)
+
+### 4.1 Webhook Security
+- [ ] ✅ **CRITICAL** Webhook signature verification implemented (HMAC-SHA256)
+  ```bash
+  # Test: Send webhook with invalid signature
+  curl -X POST https://bridge.domain.com/api/v1/webhooks/chatwoot/test \
+    -H "X-Chatwoot-Signature: sha256=invalid" \
+    -H "X-Chatwoot-Timestamp: $(date +%s)" \
+    -d '{}'
+  # Expected: 403 Forbidden
+  ```
+- [ ] ✅ **CRITICAL** Timestamp validation prevents replay attacks (5-minute window)
+  ```bash
+  # Test: Send webhook with old timestamp
+  curl -X POST https://bridge.domain.com/api/v1/webhooks/chatwoot/test \
+    -H "X-Chatwoot-Timestamp: 1000000000" \
+    -d '{}'
+  # Expected: 401 Unauthorized - Timestamp expired
+  ```
+- [ ] ✅ **CRITICAL** Payload size limit enforced (1MB)
+  ```bash
+  # Test: Send 2MB payload
+  # Expected: 413 Payload Too Large
+  ```
+- [ ] ✅ Webhook idempotency implemented (24-hour cache)
+- [ ] ✅ Webhook processing is asynchronous (queue-based)
+- [ ] ✅ Dead letter queue for failed webhooks
+- [ ] ✅ Exponential backoff retry mechanism
+
+**Score**: ___ / 7
+
+### 4.2 Rate Limiting
+- [ ] ✅ **CRITICAL** Rate limiting enabled on all endpoints
+  ```bash
+  # Test: Send 101 requests in 1 minute to webhook endpoint
+  for i in {1..101}; do curl -X POST https://bridge.domain.com/api/v1/webhooks/chatwoot/test; done
+  # Expected: 429 Too Many Requests on request 101
+  ```
+- [ ] ✅ Different limits for different endpoint types
+  - Webhooks: 100 req/min per IP
+  - Data APIs: 60 req/min per user
+  - AI Insights: 30 req/min per user
+- [ ] ✅ Rate limit headers included in responses
+  ```
+  X-RateLimit-Limit: 60
+  X-RateLimit-Remaining: 45
+  X-RateLimit-Reset: 1696512600
+  ```
+- [ ] ✅ Distributed rate limiting (Redis-based)
+- [ ] ✅ Rate limit bypass for whitelisted IPs (internal services)
+
+**Score**: ___ / 5
+
+### 4.3 CORS Configuration
+- [ ] ✅ **CRITICAL** CORS restricted to specific origins (not *)
+  ```javascript
+  // Test: Request from unauthorized origin
+  fetch('https://bridge.domain.com/api/v1/health', {
+    headers: {'Origin': 'https://malicious.com'}
+  })
+  // Expected: CORS error
+  ```
+- [ ] ✅ Allowed origins documented and reviewed
+  ```
+  KRAYIN_URL=https://crm.domain.com
+  CHATWOOT_URL=https://chat.domain.com
+  ```
+- [ ] ✅ Credentials (cookies) only allowed for trusted origins
+- [ ] ✅ Preflight requests handled correctly
+
+**Score**: ___ / 4
+
+### 4.4 API Documentation & Versioning
+- [ ] ✅ API versioned (e.g., /api/v1/)
+- [ ] ✅ Deprecated endpoints return Deprecation header
+- [ ] ✅ API documentation complete and accurate
+- [ ] ✅ Authentication requirements documented
+- [ ] ✅ Rate limits documented
+- [ ] ✅ Error codes documented
+
+**Score**: ___ / 6
+
+### 4.5 Response Security
+- [ ] ✅ Sensitive data not in API responses (passwords, full tokens)
+- [ ] ✅ Stack traces never returned in production
+- [ ] ✅ Consistent error response format
+
+**Score**: ___ / 3
+
+---
+
+## 5. LGPD Compliance (30 items)
+
+### 5.1 Consent Management
+- [ ] ✅ **CRITICAL** Explicit consent collected before data processing
+- [ ] ✅ **CRITICAL** Separate consent for sensitive health data
+- [ ] ✅ **CRITICAL** Consent recorded with timestamp, IP, user agent
+  ```sql
+  SELECT * FROM consent_records WHERE contact_id = 1;
+  -- Expected: All consent types, granted_at, ip_address
+  ```
+- [ ] ✅ Consent withdrawal mechanism functional
+  ```bash
+  # Test: Withdraw consent via API
+  curl -X DELETE https://bridge.domain.com/api/v1/lgpd/consent/1/health_data
+  # Expected: 200 OK, consent status = withdrawn
+  ```
+- [ ] ✅ Consent version tracking implemented
+- [ ] ✅ Pre-chat consent form in Chatwoot configured
+- [ ] ✅ Marketing consent optional (not required)
+- [ ] ✅ Consent history available for review
+
+**Score**: ___ / 8
+
+### 5.2 Data Subject Rights (Art. 18)
+- [ ] ✅ **CRITICAL** Data export API functional (Art. 18, I)
+  ```bash
+  # Test: Export all data for contact
+  curl https://bridge.domain.com/api/v1/lgpd/export/1 \
+    -H "Authorization: Bearer $TOKEN"
+  # Expected: JSON file with all personal data
+  ```
+- [ ] ✅ **CRITICAL** Data deletion API functional (Art. 18, VI)
+  ```bash
+  # Test: Delete all data for contact
+  curl -X DELETE https://bridge.domain.com/api/v1/lgpd/data/1 \
+    -H "Authorization: Bearer $TOKEN" \
+    -d '{"confirmation":"DELETE_ALL_DATA","reason":"User request"}'
+  # Expected: 200 OK, all data deleted across systems
+  ```
+- [ ] ✅ Data correction mechanism available
+- [ ] ✅ Data portability format (JSON) implemented
+- [ ] ✅ Response time ≤ 15 days for data requests
+- [ ] ✅ DPO contact information published
+- [ ] ✅ Privacy policy accessible and current
+
+**Score**: ___ / 7
+
+### 5.3 Data Protection Measures
+- [ ] ✅ **CRITICAL** Field-level encryption for health data
+  ```sql
+  -- Test: Check if medical data is encrypted
+  SELECT medical_notes FROM leads WHERE id = 1;
+  -- Expected: Encrypted string, not readable plain text
+  ```
+- [ ] ✅ **CRITICAL** Audit logs for all data access
+  ```sql
+  SELECT * FROM audit_logs WHERE model = 'Lead' AND action = 'read';
+  -- Expected: Logs with user_id, ip_address, timestamp
+  ```
+- [ ] ✅ Data minimization principle enforced
+- [ ] ✅ Access control based on need-to-know
+- [ ] ✅ Data anonymization for analytics
+- [ ] ✅ Secure data transmission (HTTPS only)
+
+**Score**: ___ / 6
+
+### 5.4 Data Retention
+- [ ] ✅ **CRITICAL** Automated retention enforcement scheduled
+  ```bash
+  # Check cron job
+  grep "lgpd:enforce-retention" /etc/crontab
+  # Expected: Monthly execution
+  ```
+- [ ] ✅ Personal data retention: 5 years
+- [ ] ✅ Medical data retention: 20 years (CFM compliance)
+- [ ] ✅ Old data anonymization working
+  ```bash
+  # Test: Run retention command
+  php artisan lgpd:enforce-retention --dry-run
+  # Expected: Report of records to be anonymized
+  ```
+- [ ] ✅ Retention policy documented and published
+
+**Score**: ___ / 5
+
+### 5.5 Compliance Documentation
+- [ ] ✅ **CRITICAL** Data Protection Impact Assessment (DPIA) completed
+- [ ] ✅ **CRITICAL** Privacy policy published in Portuguese
+- [ ] ✅ Data processing agreements (DPA) signed with vendors
+- [ ] ✅ Incident response plan documented
+- [ ] ✅ Employee LGPD training completed and documented
+
+**Score**: ___ / 5
+
+---
+
+## 6. Operational Security (20 items)
+
+### 6.1 Backup & Recovery
+- [ ] ✅ **CRITICAL** Automated daily backups configured
+  ```bash
+  # Check last backup
+  ls -lh /opt/backups/postgres/ | tail -5
+  # Expected: Daily backups for last 5 days
+  ```
+- [ ] ✅ **CRITICAL** Backup restoration tested in last 30 days
+  ```
+  Date of last test: ___ / ___ / ___
+  Result: [ ] Success [ ] Failure
+  ```
+- [ ] ✅ Backups stored off-site (separate server/cloud)
+- [ ] ✅ Backups encrypted
+- [ ] ✅ Backup retention: 30 days (daily), 12 months (monthly)
+- [ ] ✅ Recovery Time Objective (RTO): ≤ 4 hours
+- [ ] ✅ Recovery Point Objective (RPO): ≤ 24 hours
+
+**Score**: ___ / 7
+
+### 6.2 Monitoring & Alerting
+- [ ] ✅ **CRITICAL** Health check endpoints responding
+  ```bash
+  curl https://bridge.domain.com/api/v1/health
+  # Expected: {"status":"healthy","checks":{...}}
+  ```
+- [ ] ✅ Uptime monitoring configured (e.g., UptimeRobot)
+- [ ] ✅ Error rate monitoring configured
+- [ ] ✅ Performance monitoring configured (response times)
+- [ ] ✅ Resource monitoring (CPU, memory, disk)
+- [ ] ✅ Alert notifications configured (email/Slack)
+- [ ] ✅ On-call rotation established
+
+**Score**: ___ / 7
+
+### 6.3 Incident Response
+- [ ] ✅ Incident response plan documented
+- [ ] ✅ Incident response team identified
+- [ ] ✅ Escalation procedures defined
+- [ ] ✅ Communication templates prepared
+- [ ] ✅ Post-mortem process defined
+- [ ] ✅ Incident response drill completed in last 6 months
+
+**Score**: ___ / 6
+
+---
+
+## 7. Penetration Testing Results
+
+### 7.1 Automated Security Scans
+- [ ] ✅ OWASP ZAP scan completed
+  ```
+  Scan Date: ___ / ___ / ___
+  High Severity Issues: ___ (Expected: 0)
+  Medium Severity Issues: ___ (Expected: < 5)
+  ```
+- [ ] ✅ Nmap port scan completed
+  ```bash
+  nmap -sV -sC yourdomain.com
+  # Expected: Only 22, 80, 443 open
+  ```
+- [ ] ✅ SSL/TLS scan completed (testssl.sh)
+  ```bash
+  testssl.sh https://yourdomain.com
+  # Expected: All green, no vulnerabilities
+  ```
+
+### 7.2 Manual Testing
+- [ ] ✅ SQL injection testing (all forms)
+  ```
+  Test: ' OR '1'='1
+  Result: [ ] Blocked [ ] Failed
+  ```
+- [ ] ✅ XSS testing (all input fields)
+  ```
+  Test: <script>alert('XSS')</script>
+  Result: [ ] Sanitized [ ] Failed
+  ```
+- [ ] ✅ CSRF testing
+  ```
+  Test: Submit form without CSRF token
+  Result: [ ] Rejected [ ] Failed
+  ```
+- [ ] ✅ Authentication bypass testing
+- [ ] ✅ Authorization bypass testing
+- [ ] ✅ Session fixation testing
+- [ ] ✅ Directory traversal testing
+
+---
+
+## 8. Final Verification
+
+### 8.1 Critical Vulnerabilities
+- [ ] ✅ **ZERO critical vulnerabilities** identified
+- [ ] ✅ All high-severity issues resolved
+- [ ] ✅ Medium-severity issues documented with remediation plan
+
+### 8.2 Compliance Verification
+- [ ] ✅ LGPD compliance verified (95%+ score)
+- [ ] ✅ CFM Resolution 1.821/2007 compliance (medical records)
+- [ ] ✅ PCI DSS N/A (no payment card data stored)
+
+### 8.3 Documentation Review
+- [ ] ✅ All documentation complete and current
+- [ ] ✅ Runbooks available for common tasks
+- [ ] ✅ Architecture diagrams up to date
+- [ ] ✅ API documentation accurate
+
+---
+
+## Audit Results
+
+### Overall Score Calculation
+
+```
+Total Items: 150
+Passed: ___
+Failed: ___
+N/A: ___
+
+Score: (___ / (150 - N/A)) × 100 = ___%
+```
+
+### Severity Breakdown
+
+| Severity | Count | Status |
+|----------|-------|--------|
+| **Critical** | __ | ✅ All Pass / ❌ ___ Failed |
+| High | __ | ✅ All Pass / ⚠️ ___ Failed |
+| Medium | __ | ✅ Pass / ⚠️ ___ Failed |
+| Low | __ | ✅ Pass / ⚠️ ___ Failed |
+
+### Recommendation
+
+- [ ] ✅ **APPROVED FOR LAUNCH** (Score ≥ 95%, all critical items passed)
+- [ ] ⚠️ **CONDITIONAL APPROVAL** (Score 90-94%, critical items passed)
+- [ ] ❌ **NOT APPROVED** (Score < 90% or critical items failed)
+
+### Required Actions Before Launch
+
+1. _______________________________________________
+2. _______________________________________________
+3. _______________________________________________
+
+### Follow-Up Items (Post-Launch)
+
+1. _______________________________________________
+2. _______________________________________________
+3. _______________________________________________
+
+---
+
+## Sign-Off
+
+**Security Auditor**: ________________________  
+**Signature**: ________________________  
+**Date**: ___ / ___ / 2025
+
+**Technical Lead**: ________________________  
+**Signature**: ________________________  
+**Date**: ___ / ___ / 2025
+
+**DPO (Data Protection Officer)**: ________________________  
+**Signature**: ________________________  
+**Date**: ___ / ___ / 2025
+
+**Project Manager**: ________________________  
+**Signature**: ________________________  
+**Date**: ___ / ___ / 2025
+
+---
+
+## Next Audit
+
+**Scheduled Date**: ___ / ___ / 2026  
+**Frequency**: Annually or after major changes  
+**Auditor**: ________________________
+
+---
+
+**Document Version**: 1.0  
+**Last Updated**: October 08, 2025  
+**Status**: Ready for Use

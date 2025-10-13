@@ -1,0 +1,670 @@
+# docker-compose.prod.yml
+# Production-ready Docker Compose configuration
+# Healthcare CRM + LiveChat Platform
+# Version: 2.1 (Security Hardened)
+
+version: '3.8'
+
+services:
+  # ====================
+  # REVERSE PROXY & SSL
+  # ====================
+  traefik:
+# docker-compose.prod.yml
+# Production-ready Docker Compose configuration
+# Healthcare CRM + LiveChat Platform
+# Version: 2.1 (Security Hardened)
+
+version: '3.8'
+
+services:
+  # ====================
+  # REVERSE PROXY & SSL
+  # ====================
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - web
+      - internal
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - TRAEFIK_LOG_LEVEL=INFO
+      - TRAEFIK_ACCESSLOG=true
+    command:
+      # API and Dashboard
+      - "--api.dashboard=false"  # Disabled in production
+      - "--api.insecure=false"
+      
+      # Providers
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=web"
+      
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      
+      # SSL/TLS
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      
+      # Security Headers
+      - "--entrypoints.websecure.http.tls.options=modern@file"
+      - "--entrypoints.websecure.http.middlewares=security-headers@docker"
+      
+      # Access Logs
+      - "--accesslog=true"
+      - "--accesslog.filepath=/var/log/traefik/access.log"
+      - "--accesslog.bufferingsize=100"
+      
+      # Metrics (Optional)
+      - "--metrics.prometheus=true"
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+    
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+      - traefik_logs:/var/log/traefik
+    
+    labels:
+      # Security headers middleware
+      - "traefik.http.middlewares.security-headers.headers.framedeny=true"
+      - "traefik.http.middlewares.security-headers.headers.sslredirect=true"
+      - "traefik.http.middlewares.security-headers.headers.stsincludesubdomains=true"
+      - "traefik.http.middlewares.security-headers.headers.stspreload=true"
+      - "traefik.http.middlewares.security-headers.headers.stsseconds=31536000"
+      - "traefik.http.middlewares.security-headers.headers.forcestsheader=true"
+      - "traefik.http.middlewares.security-headers.headers.contenttypenosniff=true"
+      - "traefik.http.middlewares.security-headers.headers.browserxssfilter=true"
+      - "traefik.http.middlewares.security-headers.headers.referrerpolicy=strict-origin-when-cross-origin"
+      - "traefik.http.middlewares.security-headers.headers.permissionspolicy=geolocation=(self), microphone=()"
+
+  # ====================
+  # DATABASE - PRIMARY
+  # ====================
+  postgres-primary:
+    image: postgres:13-alpine
+    container_name: postgres-primary
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_MULTIPLE_DATABASES: "bridge,krayin,chatwoot"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+      # Replication settings
+      POSTGRES_REPLICATION_MODE: master
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh:ro
+      - ./docker/postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    shm_size: 256mb
+
+  # ====================
+  # DATABASE - REPLICA
+  # ====================
+  postgres-replica:
+    image: postgres:13-alpine
+    container_name: postgres-replica
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_REPLICATION_MODE: slave
+      POSTGRES_MASTER_HOST: postgres-primary
+      POSTGRES_MASTER_PORT: 5432
+      POSTGRES_REPLICATION_USER: replicator
+      POSTGRES_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  # ====================
+  # CONNECTION POOLING
+  # ====================
+  pgbouncer:
+    image: edoburu/pgbouncer:1.18.0
+    container_name: pgbouncer
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      DATABASE_URL: "postgres://postgres:${DB_PASSWORD}@postgres-primary:5432/bridge"
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 1000
+      DEFAULT_POOL_SIZE: 25
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      MAX_DB_CONNECTIONS: 100
+      MAX_USER_CONNECTIONS: 100
+      SERVER_IDLE_TIMEOUT: 600
+      SERVER_LIFETIME: 3600
+      SERVER_CONNECT_TIMEOUT: 15
+      LOG_CONNECTIONS: 1
+      LOG_DISCONNECTIONS: 1
+      LOG_POOLER_ERRORS: 1
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ====================
+  # REDIS - MASTER
+  # ====================
+  redis-master:
+    image: redis:6.2-alpine
+    container_name: redis-master
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 2gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_master_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ====================
+  # REDIS - REPLICAS
+  # ====================
+  redis-replica-1:
+    image: redis:6.2-alpine
+    container_name: redis-replica-1
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-server
+      --slaveof redis-master 6379
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_replica1_data:/data
+    depends_on:
+      - redis-master
+
+  redis-replica-2:
+    image: redis:6.2-alpine
+    container_name: redis-replica-2
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-server
+      --slaveof redis-master 6379
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_replica2_data:/data
+    depends_on:
+      - redis-master
+
+  # ====================
+  # REDIS - SENTINELS
+  # ====================
+  redis-sentinel-1:
+    image: redis:6.2-alpine
+    container_name: redis-sentinel-1
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      - redis-master
+
+  redis-sentinel-2:
+    image: redis:6.2-alpine
+    container_name: redis-sentinel-2
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      - redis-master
+
+  redis-sentinel-3:
+    image: redis:6.2-alpine
+    container_name: redis-sentinel-3
+    restart: unless-stopped
+    networks:
+      - internal
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./docker/redis/sentinel.conf:/etc/redis/sentinel.conf:ro
+    depends_on:
+      - redis-master
+
+  # ====================
+  # KRAYIN CRM
+  # ====================
+  krayin:
+    image: ${DOCKER_REGISTRY}/krayin:${KRAYIN_VERSION:-latest}
+    container_name: krayin
+    restart: unless-stopped
+    networks:
+      - web
+      - internal
+    environment:
+      APP_ENV: production
+      APP_DEBUG: false
+      APP_URL: https://${KRAYIN_DOMAIN}
+      DB_CONNECTION: pgsql
+      DB_HOST: pgbouncer
+      DB_PORT: 6432
+      DB_DATABASE: krayin
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis-master
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PORT: 6379
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+    volumes:
+      - krayin_storage:/var/www/html/storage
+      - krayin_public:/var/www/html/public
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      
+      # HTTP Router
+      - "traefik.http.routers.krayin.rule=Host(`${KRAYIN_DOMAIN}`)"
+      - "traefik.http.routers.krayin.entrypoints=websecure"
+      - "traefik.http.routers.krayin.tls=true"
+      - "traefik.http.routers.krayin.tls.certresolver=letsencrypt"
+      
+      # Service
+      - "traefik.http.services.krayin.loadbalancer.server.port=80"
+      - "traefik.http.services.krayin.loadbalancer.healthcheck.path=/health"
+      - "traefik.http.services.krayin.loadbalancer.healthcheck.interval=30s"
+      
+      # Middlewares
+      - "traefik.http.routers.krayin.middlewares=security-headers,krayin-ratelimit"
+      - "traefik.http.middlewares.krayin-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.krayin-ratelimit.ratelimit.burst=50"
+
+  # ====================
+  # CHATWOOT
+  # ====================
+  chatwoot:
+    image: ${DOCKER_REGISTRY}/chatwoot:${CHATWOOT_VERSION:-latest}
+    container_name: chatwoot
+    restart: unless-stopped
+    networks:
+      - web
+      - internal
+    environment:
+      RAILS_ENV: production
+      RAILS_LOG_TO_STDOUT: 'true'
+      SECRET_KEY_BASE: ${CHATWOOT_SECRET_KEY_BASE}
+      FRONTEND_URL: https://${CHATWOOT_DOMAIN}
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@pgbouncer:6432/chatwoot
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-master:6379
+      REDIS_SENTINELS: redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+      REDIS_SENTINEL_MASTER_NAME: mymaster
+      ACTIVE_STORAGE_SERVICE: local
+      RAILS_MAX_THREADS: 5
+    volumes:
+      - chatwoot_storage:/app/storage
+      - chatwoot_public:/app/public
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      
+      # HTTP Router
+      - "traefik.http.routers.chatwoot.rule=Host(`${CHATWOOT_DOMAIN}`)"
+      - "traefik.http.routers.chatwoot.entrypoints=websecure"
+      - "traefik.http.routers.chatwoot.tls=true"
+      - "traefik.http.routers.chatwoot.tls.certresolver=letsencrypt"
+      
+      # Service
+      - "traefik.http.services.chatwoot.loadbalancer.server.port=3000"
+      - "traefik.http.services.chatwoot.loadbalancer.healthcheck.path=/api"
+      - "traefik.http.services.chatwoot.loadbalancer.healthcheck.interval=30s"
+      
+      # Middlewares
+      - "traefik.http.routers.chatwoot.middlewares=security-headers,chatwoot-ratelimit"
+      - "traefik.http.middlewares.chatwoot-ratelimit.ratelimit.average=200"
+      - "traefik.http.middlewares.chatwoot-ratelimit.ratelimit.burst=100"
+
+  # Chatwoot Sidekiq Worker
+  chatwoot-sidekiq:
+    image: ${DOCKER_REGISTRY}/chatwoot:${CHATWOOT_VERSION:-latest}
+    container_name: chatwoot-sidekiq
+    restart: unless-stopped
+    networks:
+      - internal
+    command: bundle exec sidekiq -C config/sidekiq.yml
+    environment:
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@pgbouncer:6432/chatwoot
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis-master:6379
+    volumes:
+      - chatwoot_storage:/app/storage
+    depends_on:
+      - chatwoot
+
+  # ====================
+  # BRIDGE SERVICE
+  # ====================
+  bridge:
+    image: ${DOCKER_REGISTRY}/bridge:${BRIDGE_VERSION:-latest}
+    container_name: bridge
+    restart: unless-stopped
+    networks:
+      - web
+      - internal
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      APP_ENV: production
+      APP_DEBUG: false
+      APP_URL: https://${BRIDGE_DOMAIN}
+      DB_CONNECTION: pgsql
+      DB_WRITE_HOST: pgbouncer
+      DB_WRITE_PORT: 6432
+      DB_READ_HOST: postgres-replica
+      DB_READ_PORT: 5432
+      DB_DATABASE: bridge
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_CLIENT: predis
+      REDIS_HOST: redis-master
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PORT: 6379
+      REDIS_SENTINELS: redis-sentinel-1:26379,redis-sentinel-2:26379,redis-sentinel-3:26379
+      CACHE_DRIVER: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      # Krayin API
+      KRAYIN_BASE_URL: https://${KRAYIN_DOMAIN}
+      KRAYIN_API_TOKEN: ${KRAYIN_API_TOKEN}
+      # Chatwoot API
+      CHATWOOT_BASE_URL: https://${CHATWOOT_DOMAIN}
+      CHATWOOT_API_TOKEN: ${CHATWOOT_API_TOKEN}
+      CHATWOOT_WEBHOOK_SECRET: ${CHATWOOT_WEBHOOK_SECRET}
+    volumes:
+      - bridge_storage:/var/www/html/storage
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis-master:
+        condition: service_healthy
+      krayin:
+        condition: service_healthy
+      chatwoot:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      
+      # HTTP Router
+      - "traefik.http.routers.bridge.rule=Host(`${BRIDGE_DOMAIN}`)"
+      - "traefik.http.routers.bridge.entrypoints=websecure"
+      - "traefik.http.routers.bridge.tls=true"
+      - "traefik.http.routers.bridge.tls.certresolver=letsencrypt"
+      
+      # Service
+      - "traefik.http.services.bridge.loadbalancer.server.port=80"
+      - "traefik.http.services.bridge.loadbalancer.healthcheck.path=/api/v1/health"
+      - "traefik.http.services.bridge.loadbalancer.healthcheck.interval=30s"
+      - "traefik.http.services.bridge.loadbalancer.sticky.cookie=true"
+      
+      # Middlewares
+      - "traefik.http.routers.bridge.middlewares=security-headers,bridge-ratelimit"
+      - "traefik.http.middlewares.bridge-ratelimit.ratelimit.average=100"
+      - "traefik.http.middlewares.bridge-ratelimit.ratelimit.burst=50"
+
+  # Bridge Queue Workers
+  bridge-worker:
+    image: ${DOCKER_REGISTRY}/bridge:${BRIDGE_VERSION:-latest}
+    container_name: bridge-worker
+    restart: unless-stopped
+    networks:
+      - internal
+    deploy:
+      replicas: 2
+    command: php artisan queue:work redis --queue=webhooks-high,webhooks-normal,default --tries=5 --timeout=120 --sleep=3 --max-jobs=1000
+    environment:
+      APP_ENV: production
+      DB_WRITE_HOST: pgbouncer
+      REDIS_HOST: redis-master
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      KRAYIN_BASE_URL: https://${KRAYIN_DOMAIN}
+      KRAYIN_API_TOKEN: ${KRAYIN_API_TOKEN}
+      CHATWOOT_BASE_URL: https://${CHATWOOT_DOMAIN}
+      CHATWOOT_API_TOKEN: ${CHATWOOT_API_TOKEN}
+    volumes:
+      - bridge_storage:/var/www/html/storage
+    depends_on:
+      - bridge
+
+  # Bridge Scheduler
+  bridge-scheduler:
+    image: ${DOCKER_REGISTRY}/bridge:${BRIDGE_VERSION:-latest}
+    container_name: bridge-scheduler
+    restart: unless-stopped
+    networks:
+      - internal
+    command: php artisan schedule:work
+    environment:
+      APP_ENV: production
+      DB_WRITE_HOST: pgbouncer
+      REDIS_HOST: redis-master
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - bridge_storage:/var/www/html/storage
+    depends_on:
+      - bridge
+
+  # ====================
+  # MESSAGE QUEUE (OPTIONAL)
+  # ====================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    networks:
+      - internal
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ====================
+  # MONITORING (OPTIONAL)
+  # ====================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    networks:
+      - internal
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    networks:
+      - internal
+      - web
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`${GRAFANA_DOMAIN}`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+# ====================
+# NETWORKS
+# ====================
+networks:
+  web:
+    external: true
+  internal:
+    driver: bridge
+    internal: true
+
+# ====================
+# VOLUMES
+# ====================
+volumes:
+  traefik_letsencrypt:
+    driver: local
+  traefik_logs:
+    driver: local
+  postgres_primary_data:
+    driver: local
+  postgres_replica_data:
+    driver: local
+  redis_master_data:
+    driver: local
+  redis_replica1_data:
+    driver: local
+  redis_replica2_data:
+    driver: local
+  krayin_storage:
+    driver: local
+  krayin_public:
+    driver: local
+  chatwoot_storage:
+    driver: local
+  chatwoot_public:
+    driver: local
+  bridge_storage:
+    driver: local
+  rabbitmq_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

@@ -1,0 +1,1486 @@
+# System Architecture - Krayin + Chatwoot Integration (IMPROVED)
+
+**Project**: Healthcare CRM and LiveChat Platform  
+**Version**: 2.1 (Security & Performance Enhanced)  
+**Last Updated**: October 08, 2025  
+**Status**: Production Ready with Critical Fixes
+
+---
+
+## Executive Summary
+
+This document provides the **production-hardened** technical architecture for an integrated healthcare CRM and omnichannel communication platform. Critical security vulnerabilities have been addressed, performance bottlenecks resolved, and LGPD compliance fully implemented.
+
+### Key Improvements in v2.1
+
+1. **Security Hardening**:
+   - Fixed webhook signature verification (replay attack prevention)
+   - Implemented comprehensive rate limiting
+   - Added field-level encryption for health data
+   - Enhanced CORS and CSRF protection
+
+2. **Performance Optimization**:
+   - Added compound database indexes
+   - Implemented read replicas and connection pooling
+   - Redesigned ai_insights as time-series
+   - Added comprehensive caching strategy
+
+3. **LGPD Compliance**:
+   - Explicit consent management system
+   - Automated data retention enforcement
+   - Complete audit trail for all data access
+   - Data export API for portability
+
+4. **Scalability Enhancements**:
+   - Asynchronous webhook processing
+   - Redis Sentinel for high availability
+   - Horizontal scaling configuration
+   - Database partitioning strategy
+
+---
+
+## High-Level Architecture (Enhanced)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Internet / Users                         │
+└─────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ HTTPS + HSTS
+                                 ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Traefik Reverse Proxy + WAF + Rate Limit           │
+│                     (Let's Encrypt + HTTPS Redirect)            │
+└─────────────────────────────────────────────────────────────────┘
+         │                          │                          │
+         │ crm.domain.com           │ chat.domain.com         │ bridge.domain.com
+         ▼                          ▼                          ▼
+┌──────────────────┐       ┌──────────────────┐       ┌──────────────────┐
+│   Krayin CRM     │       │    Chatwoot      │       │  Bridge Service  │
+│   (Laravel 10)   │◄─────►│   (Rails 7)      │◄─────►│   (Laravel 10)   │
+│                  │  APIs │                  │Webhooks│                  │
+│ - Web UI         │       │ - Web UI         │       │ - Webhooks       │
+│ - REST API       │       │ - REST API       │       │ - API Endpoints  │
+│ - Queue Workers  │       │ - Sidekiq        │       │ - AI Insights    │
+│                  │       │                  │       │ - Queue Workers  │
+└──────────────────┘       └──────────────────┘       └──────────────────┘
+         │                          │                          │
+         └────────────┬─────────────┴───────────┬──────────────┘
+                      │                         │
+                      ▼                         ▼
+        ┌──────────────────────┐       ┌──────────────────┐
+        │   PostgreSQL         │       │   Redis Sentinel │
+        │   (Primary +         │       │   (HA Cluster)   │
+        │    Replica)          │       │                  │
+        │                      │       │ - Cache          │
+        │ - PgBouncer Pool     │       │ - Queue          │
+        │ - 3 Databases        │       │ - Sessions       │
+        └──────────────────────┘       └──────────────────┘
+                      │                         │
+                      ▼                         ▼
+        ┌──────────────────────┐       ┌──────────────────┐
+        │   RabbitMQ           │       │   Backup System  │
+        │   (Message Queue)    │       │   (S3-compatible)│
+        │                      │       │                  │
+        │ - Webhook DLQ        │       │ - Daily backups  │
+        │ - Async Jobs         │       │ - 30d retention  │
+        └──────────────────────┘       └──────────────────┘
+```
+
+---
+
+## Component Architecture (Enhanced)
+
+### 1. Krayin CRM (Unchanged)
+
+**Technology Stack**:
+- Backend: Laravel 10.x (PHP 8.1+)
+- Frontend: Vue.js 3 + Blade templates
+- Database: PostgreSQL 13+
+- Cache/Queue: Redis 6.2+
+
+---
+
+### 2. Chatwoot (Minimal Changes)
+
+**Technology Stack**:
+- Backend: Ruby on Rails 7.x
+- Frontend: Vue.js 3
+- Database: PostgreSQL 13+
+- Cache/Queue: Redis 6.2+
+
+**Configuration Changes** (webhook enhancement):
+```ruby
+# config/environments/production.rb
+config.x.webhook_timestamp = true  # Add timestamp to signatures
+config.x.webhook_retry_attempts = 3
+config.x.webhook_retry_backoff = :exponential
+```
+
+---
+
+### 3. Bridge Service (MAJOR ENHANCEMENTS)
+
+**New Dependencies**:
+```json
+{
+  "require": {
+    "guzzlehttp/guzzle": "^7.8",
+    "predis/predis": "^2.2",
+    "phpamqplib/php-amqplib": "^3.5",
+    "spatie/laravel-permission": "^6.0",
+    "spatie/laravel-activitylog": "^4.7"
+  }
+}
+```
+
+**Enhanced Service Classes**:
+
+```php
+// app/Services/KrayinApiService.php (with caching)
+class KrayinApiService
+{
+    private Client $client;
+    private int $timeout = 10;
+    private int $retryAttempts = 3;
+    
+    public function __construct()
+    {
+        $this->client = new Client([
+            'base_uri' => config('services.krayin.base_url'),
+            'timeout' => $this->timeout,
+            'headers' => [
+                'Authorization' => 'Bearer ' . config('services.krayin.api_token'),
+                'Accept' => 'application/json',
+            ],
+        ]);
+    }
+    
+    public function createLead(array $data): array
+    {
+        return $this->retryRequest(function() use ($data) {
+            $response = $this->client->post('/api/leads', [
+                'json' => $data
+            ]);
+            
+            return json_decode($response->getBody()->getContents(), true);
+        });
+    }
+    
+    public function getLeadById(int $leadId): array
+    {
+        return Cache::remember(
+            "lead:{$leadId}", 
+            300, // 5 minutes
+            fn() => $this->fetchLead($leadId)
+        );
+    }
+    
+    public function updateLeadStage(int $leadId, int $stageId): array
+    {
+        $response = $this->retryRequest(function() use ($leadId, $stageId) {
+            return $this->client->put("/api/leads/{$leadId}", [
+                'json' => ['lead_pipeline_stage_id' => $stageId]
+            ]);
+        });
+        
+        // Invalidate cache
+        Cache::forget("lead:{$leadId}");
+        
+        return json_decode($response->getBody()->getContents(), true);
+    }
+    
+    private function retryRequest(callable $callback)
+    {
+        $attempt = 0;
+        
+        while ($attempt < $this->retryAttempts) {
+            try {
+                return $callback();
+            } catch (RequestException $e) {
+                $attempt++;
+                
+                if ($attempt >= $this->retryAttempts) {
+                    Log::error('Krayin API request failed', [
+                        'attempts' => $attempt,
+                        'error' => $e->getMessage()
+                    ]);
+                    throw new KrayinApiException($e->getMessage(), $e->getCode(), $e);
+                }
+                
+                // Exponential backoff: 1s, 2s, 4s
+                sleep(pow(2, $attempt - 1));
+            }
+        }
+    }
+}
+```
+
+---
+
+## Security Architecture (CRITICAL ENHANCEMENTS)
+
+### Webhook Signature Verification (FIXED)
+
+```php
+// app/Http/Middleware/VerifyChatwootSignature.php
+class VerifyChatwootSignature
+{
+    private const MAX_PAYLOAD_SIZE = 1048576; // 1MB
+    private const TIMESTAMP_TOLERANCE = 300; // 5 minutes
+    
+    public function handle(Request $request, Closure $next)
+    {
+        // 1. Check payload size (prevent DoS)
+        if ($request->header('Content-Length') > self::MAX_PAYLOAD_SIZE) {
+            Log::warning('Webhook payload too large', [
+                'size' => $request->header('Content-Length'),
+                'ip' => $request->ip()
+            ]);
+            return response()->json(['error' => 'Payload too large'], 413);
+        }
+        
+        // 2. Extract headers
+        $signature = $request->header('X-Chatwoot-Signature');
+        $timestamp = $request->header('X-Chatwoot-Timestamp');
+        
+        if (!$signature || !$timestamp) {
+            Log::warning('Missing webhook headers', ['ip' => $request->ip()]);
+            return response()->json(['error' => 'Missing signature'], 401);
+        }
+        
+        // 3. Validate timestamp (prevent replay attacks)
+        if (abs(time() - $timestamp) > self::TIMESTAMP_TOLERANCE) {
+            Log::warning('Webhook timestamp expired', [
+                'timestamp' => $timestamp,
+                'current' => time(),
+                'ip' => $request->ip()
+            ]);
+            return response()->json(['error' => 'Timestamp expired'], 401);
+        }
+        
+        // 4. Verify signature
+        $payload = $request->getContent();
+        $secret = config('services.chatwoot.webhook_secret');
+        $signedPayload = $timestamp . '.' . $payload;
+        $expectedSignature = 'sha256=' . hash_hmac('sha256', $signedPayload, $secret);
+        
+        if (!hash_equals($expectedSignature, $signature)) {
+            Log::warning('Invalid webhook signature', [
+                'ip' => $request->ip(),
+                'event' => $request->input('event')
+            ]);
+            return response()->json(['error' => 'Invalid signature'], 403);
+        }
+        
+        // 5. Check for duplicate processing (idempotency)
+        $webhookId = $request->input('id');
+        $cacheKey = "webhook_processed:{$webhookId}";
+        
+        if (Cache::has($cacheKey)) {
+            Log::info('Duplicate webhook ignored', ['webhook_id' => $webhookId]);
+            return response()->json(['success' => true, 'message' => 'Already processed'], 200);
+        }
+        
+        // Mark as processed (24 hour TTL)
+        Cache::put($cacheKey, true, 86400);
+        
+        return $next($request);
+    }
+}
+```
+
+### Rate Limiting (IMPLEMENTED)
+
+```php
+// app/Http/Middleware/ThrottleWebhooks.php
+class ThrottleWebhooks
+{
+    public function handle(Request $request, Closure $next, $maxAttempts = 100, $decayMinutes = 1)
+    {
+        $key = 'webhook:' . $request->ip();
+        
+        if (RateLimiter::tooManyAttempts($key, $maxAttempts)) {
+            Log::warning('Webhook rate limit exceeded', [
+                'ip' => $request->ip(),
+                'attempts' => RateLimiter::attempts($key)
+            ]);
+            
+            return response()->json([
+                'error' => 'Too many requests',
+                'retry_after' => RateLimiter::availableIn($key)
+            ], 429);
+        }
+        
+        RateLimiter::hit($key, $decayMinutes * 60);
+        
+        return $next($request);
+    }
+}
+
+// routes/api.php
+Route::middleware(['throttle.webhooks:100,1', 'verify.chatwoot.signature'])
+    ->prefix('webhooks/chatwoot')
+    ->group(function () {
+        Route::post('/conversation-created', [ChatwootWebhookController::class, 'conversationCreated']);
+        Route::post('/message-created', [ChatwootWebhookController::class, 'messageCreated']);
+        Route::post('/conversation-status-changed', [ChatwootWebhookController::class, 'statusChanged']);
+    });
+```
+
+### CORS Configuration (IMPLEMENTED)
+
+```php
+// config/cors.php
+return [
+    'paths' => ['api/*'],
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    'allowed_origins' => [
+        env('KRAYIN_URL'),
+        env('CHATWOOT_URL'),
+    ],
+    'allowed_origins_patterns' => [],
+    'allowed_headers' => ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+    'exposed_headers' => ['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+    'max_age' => 86400,
+    'supports_credentials' => true,
+];
+```
+
+---
+
+## Database Architecture (PERFORMANCE ENHANCED)
+
+### Compound Indexes (ADDED)
+
+```sql
+-- contact_mappings: Optimized for bi-directional lookups
+CREATE INDEX idx_contact_mappings_chatwoot_contact_id 
+  ON contact_mappings(chatwoot_contact_id);
+CREATE INDEX idx_contact_mappings_krayin_lead_id 
+  ON contact_mappings(krayin_lead_id);
+CREATE INDEX idx_contact_mappings_lead_contact 
+  ON contact_mappings(krayin_lead_id, chatwoot_contact_id);
+
+-- conversation_mappings: Optimized for filtered queries
+CREATE INDEX idx_conversation_mappings_lead_status 
+  ON conversation_mappings(krayin_lead_id, status);
+CREATE INDEX idx_conversation_mappings_lead_updated 
+  ON conversation_mappings(krayin_lead_id, updated_at DESC);
+CREATE INDEX idx_conversation_mappings_status_updated 
+  ON conversation_mappings(status, updated_at DESC);
+
+-- activity_mappings: Optimized for time-based queries
+CREATE INDEX idx_activity_mappings_message_id 
+  ON activity_mappings(chatwoot_message_id);
+CREATE INDEX idx_activity_mappings_created 
+  ON activity_mappings(created_at DESC);
+
+-- ai_insights: Optimized for leaderboard and filtering
+CREATE INDEX idx_ai_insights_lead_current 
+  ON ai_insights(krayin_lead_id, is_current) WHERE is_current = TRUE;
+CREATE INDEX idx_ai_insights_score_current 
+  ON ai_insights(performance_score DESC, krayin_lead_id) WHERE is_current = TRUE;
+CREATE INDEX idx_ai_insights_engagement_current 
+  ON ai_insights(engagement_level, performance_score DESC) WHERE is_current = TRUE;
+```
+
+### AI Insights Table (REDESIGNED AS TIME-SERIES)
+
+```sql
+-- IMPROVED: Time-series design for historical tracking
+CREATE TABLE ai_insights (
+    id BIGSERIAL PRIMARY KEY,
+    krayin_lead_id BIGINT NOT NULL,
+    
+    -- Metrics (unchanged)
+    total_conversations INT NOT NULL DEFAULT 0,
+    resolved_conversations INT NOT NULL DEFAULT 0,
+    pending_conversations INT NOT NULL DEFAULT 0,
+    resolution_rate DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    average_response_time_minutes INT NOT NULL DEFAULT 0,
+    total_messages INT NOT NULL DEFAULT 0,
+    average_messages_per_conversation DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+    performance_score DECIMAL(3,1) NOT NULL DEFAULT 0.0,
+    engagement_level VARCHAR(20) NOT NULL DEFAULT 'low',
+    suggestions JSONB NULL,
+    last_interaction_at TIMESTAMP(0) WITHOUT TIME ZONE NULL,
+    
+    -- Time-series specific fields
+    calculated_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    valid_from TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    valid_to TIMESTAMP(0) WITHOUT TIME ZONE NULL,
+    is_current BOOLEAN NOT NULL DEFAULT TRUE,
+    
+    created_at TIMESTAMP(0) WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    
+    -- Ensure only one current record per lead
+    CONSTRAINT unique_current_insight 
+      UNIQUE (krayin_lead_id, is_current) 
+      WHERE is_current = TRUE
+);
+
+-- Optimized indexes for time-series queries
+CREATE INDEX idx_ai_insights_lead_current 
+  ON ai_insights(krayin_lead_id, is_current) WHERE is_current = TRUE;
+CREATE INDEX idx_ai_insights_lead_time 
+  ON ai_insights(krayin_lead_id, calculated_at DESC);
+CREATE INDEX idx_ai_insights_performance_score 
+  ON ai_insights(performance_score DESC) WHERE is_current = TRUE;
+
+-- Function to update insights (maintains history)
+CREATE OR REPLACE FUNCTION update_ai_insights(
+    p_lead_id BIGINT,
+    p_metrics JSONB
+) RETURNS void AS $$
+BEGIN
+    -- Mark previous record as historical
+    UPDATE ai_insights
+    SET is_current = FALSE,
+        valid_to = CURRENT_TIMESTAMP
+    WHERE krayin_lead_id = p_lead_id
+      AND is_current = TRUE;
+    
+    -- Insert new record
+    INSERT INTO ai_insights (
+        krayin_lead_id,
+        total_conversations,
+        resolved_conversations,
+        resolution_rate,
+        performance_score,
+        engagement_level,
+        suggestions,
+        is_current
+    ) VALUES (
+        p_lead_id,
+        (p_metrics->>'total_conversations')::INT,
+        (p_metrics->>'resolved_conversations')::INT,
+        (p_metrics->>'resolution_rate')::DECIMAL,
+        (p_metrics->>'performance_score')::DECIMAL,
+        p_metrics->>'engagement_level',
+        p_metrics->'suggestions',
+        TRUE
+    );
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### Table Partitioning (ADDED)
+
+```sql
+-- Partition activity_mappings by month
+CREATE TABLE activity_mappings (
+    id BIGSERIAL,
+    chatwoot_message_id BIGINT NOT NULL,
+    krayin_activity_id BIGINT NOT NULL,
+    message_type VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) PARTITION BY RANGE (created_at);
+
+-- Create initial partitions
+CREATE TABLE activity_mappings_2025_10 PARTITION OF activity_mappings
+    FOR VALUES FROM ('2025-10-01') TO ('2025-11-01');
+CREATE TABLE activity_mappings_2025_11 PARTITION OF activity_mappings
+    FOR VALUES FROM ('2025-11-01') TO ('2025-12-01');
+CREATE TABLE activity_mappings_2025_12 PARTITION OF activity_mappings
+    FOR VALUES FROM ('2025-12-01') TO ('2026-01-01');
+
+-- Automated partition creation function
+CREATE OR REPLACE FUNCTION create_monthly_partitions()
+RETURNS void AS $$
+DECLARE
+    start_date DATE;
+    end_date DATE;
+    partition_name TEXT;
+BEGIN
+    FOR i IN 1..3 LOOP
+        start_date := date_trunc('month', CURRENT_DATE + (i || ' month')::INTERVAL);
+        end_date := date_trunc('month', CURRENT_DATE + ((i + 1) || ' month')::INTERVAL);
+        partition_name := 'activity_mappings_' || to_char(start_date, 'YYYY_MM');
+        
+        EXECUTE format(
+            'CREATE TABLE IF NOT EXISTS %I PARTITION OF activity_mappings
+             FOR VALUES FROM (%L) TO (%L)',
+            partition_name, start_date, end_date
+        );
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Schedule monthly (requires pg_cron extension)
+-- SELECT cron.schedule('create-partitions', '0 0 1 * *', 'SELECT create_monthly_partitions()');
+```
+
+---
+
+## LGPD Compliance (FULLY IMPLEMENTED)
+
+### 1. Consent Management System
+
+```sql
+-- New table for consent tracking
+CREATE TABLE consent_records (
+    id BIGSERIAL PRIMARY KEY,
+    contact_id BIGINT NOT NULL,
+    chatwoot_contact_id BIGINT NULL,
+    consent_type VARCHAR(50) NOT NULL, -- 'data_processing', 'marketing', 'health_data'
+    status VARCHAR(20) NOT NULL, -- 'granted', 'denied', 'withdrawn'
+    granted_at TIMESTAMP NULL,
+    withdrawn_at TIMESTAMP NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    user_agent TEXT NOT NULL,
+    consent_text TEXT NOT NULL,
+    consent_version VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_consent_contact_type ON consent_records(contact_id, consent_type);
+CREATE INDEX idx_consent_chatwoot_contact ON consent_records(chatwoot_contact_id);
+CREATE INDEX idx_consent_status ON consent_records(status);
+
+COMMENT ON TABLE consent_records IS 'LGPD: Tracks all consent given/withdrawn by contacts';
+```
+
+```php
+// app/Models/ConsentRecord.php
+class ConsentRecord extends Model
+{
+    protected $fillable = [
+        'contact_id',
+        'chatwoot_contact_id',
+        'consent_type',
+        'status',
+        'granted_at',
+        'withdrawn_at',
+        'ip_address',
+        'user_agent',
+        'consent_text',
+        'consent_version'
+    ];
+    
+    protected $casts = [
+        'granted_at' => 'datetime',
+        'withdrawn_at' => 'datetime',
+    ];
+    
+    public function isValid(): bool
+    {
+        return $this->status === 'granted' && $this->withdrawn_at === null;
+    }
+}
+
+// app/Services/ConsentService.php
+class ConsentService
+{
+    public function grantConsent(
+        int $contactId,
+        string $consentType,
+        Request $request
+    ): ConsentRecord {
+        return ConsentRecord::create([
+            'contact_id' => $contactId,
+            'consent_type' => $consentType,
+            'status' => 'granted',
+            'granted_at' => now(),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'consent_text' => config("lgpd.consent_texts.{$consentType}"),
+            'consent_version' => config('lgpd.consent_version'),
+        ]);
+    }
+    
+    public function withdrawConsent(int $contactId, string $consentType): void
+    {
+        ConsentRecord::where('contact_id', $contactId)
+            ->where('consent_type', $consentType)
+            ->where('status', 'granted')
+            ->update([
+                'status' => 'withdrawn',
+                'withdrawn_at' => now()
+            ]);
+    }
+    
+    public function hasValidConsent(int $contactId, string $consentType): bool
+    {
+        return ConsentRecord::where('contact_id', $contactId)
+            ->where('consent_type', $consentType)
+            ->where('status', 'granted')
+            ->whereNull('withdrawn_at')
+            ->exists();
+    }
+}
+```
+
+### 2. Data Retention Enforcement
+
+```php
+// app/Console/Commands/EnforceDataRetention.php
+class EnforceDataRetention extends Command
+{
+    protected $signature = 'lgpd:enforce-retention';
+    protected $description = 'Enforce LGPD data retention policies';
+    
+    public function handle()
+    {
+        $retentionDays = config('lgpd.retention_days', 1825); // 5 years
+        $cutoffDate = now()->subDays($retentionDays);
+        
+        $this->info("Enforcing retention policy: {$retentionDays} days");
+        $this->info("Cutoff date: {$cutoffDate}");
+        
+        // Anonymize old conversation data
+        $conversationsAnonymized = DB::table('conversation_mappings')
+            ->where('created_at', '<', $cutoffDate)
+            ->whereNull('anonymized_at')
+            ->update([
+                'anonymized_at' => now(),
+                'status' => 'anonymized'
+            ]);
+        
+        $this->info("Anonymized {$conversationsAnonymized} conversations");
+        
+        // Delete old activity logs (keep only mappings)
+        $activitiesDeleted = DB::table('stage_change_logs')
+            ->where('created_at', '<', $cutoffDate)
+            ->delete();
+        
+        $this->info("Deleted {$activitiesDeleted} old activity logs");
+        
+        // Log retention enforcement
+        Log::info('Data retention policy enforced', [
+            'cutoff_date' => $cutoffDate,
+            'conversations_anonymized' => $conversationsAnonymized,
+            'activities_deleted' => $activitiesDeleted,
+        ]);
+    }
+}
+
+// Schedule in app/Console/Kernel.php
+protected function schedule(Schedule $schedule)
+{
+    $schedule->command('lgpd:enforce-retention')
+        ->monthlyOn(1, '02:00')
+        ->sendOutputTo(storage_path('logs/retention.log'));
+}
+```
+
+### 3. Audit Trail (Complete Implementation)
+
+```sql
+-- Comprehensive audit log table
+CREATE TABLE audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NULL,
+    action VARCHAR(50) NOT NULL, -- 'create', 'read', 'update', 'delete', 'export'
+    model VARCHAR(100) NOT NULL,
+    model_id BIGINT NULL,
+    changes JSONB NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    user_agent TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_logs_user ON audit_logs(user_id, created_at DESC);
+CREATE INDEX idx_audit_logs_model ON audit_logs(model, model_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action, created_at DESC);
+
+-- Partition by quarter for performance
+ALTER TABLE audit_logs PARTITION BY RANGE (created_at);
+```
+
+```php
+// app/Observers/LeadObserver.php
+class LeadObserver
+{
+    public function retrieved(Lead $lead)
+    {
+        // Only log sensitive data access
+        if ($this->isSensitiveData($lead)) {
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'read',
+                'model' => 'Lead',
+                'model_id' => $lead->id,
+                'ip_address' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+            ]);
+        }
+    }
+    
+    public function updated(Lead $lead)
+    {
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'update',
+            'model' => 'Lead',
+            'model_id' => $lead->id,
+            'changes' => $lead->getChanges(),
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+    }
+    
+    public function deleted(Lead $lead)
+    {
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'delete',
+            'model' => 'Lead',
+            'model_id' => $lead->id,
+            'changes' => $lead->getOriginal(),
+            'ip_address' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
+    }
+    
+    private function isSensitiveData(Lead $lead): bool
+    {
+        return !empty($lead->medical_notes) || !empty($lead->health_data);
+    }
+}
+```
+
+### 4. Data Export API (Right to Portability)
+
+```php
+// app/Http/Controllers/Api/DataExportController.php
+class DataExportController extends Controller
+{
+    public function export(Request $request)
+    {
+        $request->validate([
+            'contact_id' => 'required|integer',
+        ]);
+        
+        $contactId = $request->input('contact_id');
+        
+        // Verify user has permission to export this data
+        $this->authorize('export-data', Contact::findOrFail($contactId));
+        
+        // Gather all personal data
+        $data = [
+            'contact' => DB::table('contacts')
+                ->where('id', $contactId)
+                ->first(),
+            
+            'conversations' => DB::table('conversations')
+                ->where('contact_id', $contactId)
+                ->get(),
+            
+            'messages' => DB::table('messages')
+                ->whereIn('conversation_id', function($query) use ($contactId) {
+                    $query->select('id')
+                        ->from('conversations')
+                        ->where('contact_id', $contactId);
+                })
+                ->get(),
+            
+            'consent_records' => ConsentRecord::where('contact_id', $contactId)->get(),
+            
+            'audit_logs' => AuditLog::where('model', 'Contact')
+                ->where('model_id', $contactId)
+                ->orderBy('created_at', 'desc')
+                ->get(),
+        ];
+        
+        // Log the export (LGPD requirement)
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => 'export',
+            'model' => 'Contact',
+            'model_id' => $contactId,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+        
+        $filename = "data-export-{$contactId}-" . now()->format('Y-m-d') . ".json";
+        
+        return response()->json($data, 200)
+            ->header('Content-Disposition', "attachment; filename=\"{$filename}\"")
+            ->header('Content-Type', 'application/json');
+    }
+}
+```
+
+### 5. Field-Level Encryption for Health Data
+
+```php
+// app/Models/Lead.php
+use Illuminate\Database\Eloquent\Casts\Attribute;
+
+class Lead extends Model
+{
+    protected $casts = [
+        'medical_notes' => 'encrypted',
+        'health_conditions' => 'encrypted',
+        'medications' => 'encrypted',
+    ];
+    
+    // Alternative: Custom encryption for more control
+    protected function medicalNotes(): Attribute
+    {
+        return Attribute::make(
+            get: fn ($value) => $value ? decrypt($value) : null,
+            set: fn ($value) => $value ? encrypt($value) : null
+        );
+    }
+}
+
+// config/lgpd.php (new configuration file)
+return [
+    'consent_version' => '1.0',
+    'retention_days' => env('LGPD_RETENTION_DAYS', 1825), // 5 years default
+    
+    'consent_texts' => [
+        'data_processing' => 'Autorizo o processamento dos meus dados pessoais conforme a Lei Geral de Proteção de Dados (LGPD).',
+        'marketing' => 'Autorizo o envio de comunicações de marketing.',
+        'health_data' => 'Autorizo o armazenamento e processamento de dados sensíveis de saúde para fins de atendimento médico.',
+    ],
+    
+    'encrypted_fields' => [
+        'leads' => ['medical_notes', 'health_conditions', 'medications'],
+        'activities' => ['sensitive_notes'],
+    ],
+];
+```
+
+---
+
+## Scalability Architecture (PRODUCTION READY)
+
+### 1. Database Scaling (Read Replicas + Connection Pooling)
+
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
+
+services:
+  postgres-primary:
+    image: postgres:13
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_REPLICATION_MODE=master
+      - POSTGRES_REPLICATION_USER=replicator
+      - POSTGRES_REPLICATION_PASSWORD=${REPLICATION_PASSWORD}
+    volumes:
+      - postgres_primary_data:/var/lib/postgresql/data
+      - ./postgres-primary.conf:/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-replica:
+    image: postgres:13
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_REPLICATION_MODE=slave
+      - POSTGRES_MASTER_HOST=postgres-primary
+      - POSTGRES_MASTER_PORT=5432
+      - POSTGRES_REPLICATION_USER=replicator
+      - POSTGRES_REPLICATION_PASSWORD=${REPLICATION_PASSWORD}
+    volumes:
+      - postgres_replica_data:/var/lib/postgresql/data
+    depends_on:
+      - postgres-primary
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      - DATABASE_URL=postgres://postgres:${DB_PASSWORD}@postgres-primary:5432/bridge
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=1000
+      - DEFAULT_POOL_SIZE=25
+      - MIN_POOL_SIZE=10
+      - RESERVE_POOL_SIZE=5
+      - SERVER_IDLE_TIMEOUT=600
+    depends_on:
+      - postgres-primary
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      interval: 10s
+
+volumes:
+  postgres_primary_data:
+  postgres_replica_data:
+
+networks:
+  backend:
+    driver: bridge
+```
+
+```php
+// config/database.php (Laravel configuration)
+'connections' => [
+    'pgsql_write' => [
+        'driver' => 'pgsql',
+        'host' => env('DB_WRITE_HOST', 'pgbouncer'), // Points to primary
+        'port' => env('DB_WRITE_PORT', '6432'),
+        'database' => env('DB_DATABASE', 'bridge'),
+        'username' => env('DB_USERNAME', 'postgres'),
+        'password' => env('DB_PASSWORD'),
+        'charset' => 'utf8',
+        'prefix' => '',
+        'schema' => 'public',
+        'sslmode' => 'prefer',
+    ],
+    
+    'pgsql_read' => [
+        'driver' => 'pgsql',
+        'host' => env('DB_READ_HOST', 'postgres-replica'),
+        'port' => env('DB_READ_PORT', '5432'),
+        'database' => env('DB_DATABASE', 'bridge'),
+        'username' => env('DB_USERNAME', 'postgres'),
+        'password' => env('DB_PASSWORD'),
+        'charset' => 'utf8',
+        'prefix' => '',
+        'schema' => 'public',
+        'sslmode' => 'prefer',
+    ],
+],
+
+// Usage in models
+class ContactMapping extends Model
+{
+    protected $connection = 'pgsql_write'; // Force writes to primary
+    
+    // Explicitly use read replica for queries
+    public static function getByLeadId($leadId)
+    {
+        return static::on('pgsql_read')
+            ->where('krayin_lead_id', $leadId)
+            ->first();
+    }
+}
+```
+
+### 2. Redis High Availability (Sentinel)
+
+```yaml
+# docker-compose.prod.yml (continued)
+services:
+  redis-master:
+    image: redis:6.2
+    command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes
+    volumes:
+      - redis_master_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+
+  redis-replica-1:
+    image: redis:6.2
+    command: >
+      redis-server
+      --slaveof redis-master 6379
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_replica1_data:/data
+    depends_on:
+      - redis-master
+    networks:
+      - backend
+
+  redis-replica-2:
+    image: redis:6.2
+    command: >
+      redis-server
+      --slaveof redis-master 6379
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
+    volumes:
+      - redis_replica2_data:/data
+    depends_on:
+      - redis-master
+    networks:
+      - backend
+
+  redis-sentinel-1:
+    image: redis:6.2
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+    networks:
+      - backend
+
+  redis-sentinel-2:
+    image: redis:6.2
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+    networks:
+      - backend
+
+  redis-sentinel-3:
+    image: redis:6.2
+    command: >
+      redis-sentinel /etc/redis/sentinel.conf
+      --sentinel monitor mymaster redis-master 6379 2
+      --sentinel auth-pass mymaster ${REDIS_PASSWORD}
+      --sentinel down-after-milliseconds mymaster 5000
+      --sentinel parallel-syncs mymaster 1
+      --sentinel failover-timeout mymaster 10000
+    volumes:
+      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+    networks:
+      - backend
+
+volumes:
+  redis_master_data:
+  redis_replica1_data:
+  redis_replica2_data:
+```
+
+```php
+// config/database.php (Redis Sentinel configuration)
+'redis' => [
+    'client' => env('REDIS_CLIENT', 'predis'),
+    
+    'options' => [
+        'replication' => 'sentinel',
+        'service' => 'mymaster',
+        'parameters' => [
+            'password' => env('REDIS_PASSWORD'),
+            'database' => 0,
+        ],
+    ],
+    
+    'default' => [
+        ['tcp://redis-sentinel-1:26379?timeout=0.5'],
+        ['tcp://redis-sentinel-2:26379?timeout=0.5'],
+        ['tcp://redis-sentinel-3:26379?timeout=0.5'],
+    ],
+    
+    'cache' => [
+        ['tcp://redis-sentinel-1:26379?timeout=0.5'],
+        ['tcp://redis-sentinel-2:26379?timeout=0.5'],
+        ['tcp://redis-sentinel-3:26379?timeout=0.5'],
+    ],
+],
+```
+
+### 3. Asynchronous Webhook Processing (CRITICAL)
+
+```php
+// app/Http/Controllers/Api/ChatwootWebhookController.php
+class ChatwootWebhookController extends Controller
+{
+    public function conversationCreated(Request $request)
+    {
+        // Signature already verified by middleware
+        
+        $webhookId = $request->input('id');
+        $payload = $request->all();
+        
+        // Dispatch to queue immediately (non-blocking)
+        ProcessConversationCreated::dispatch($webhookId, $payload)
+            ->onQueue('webhooks-high') // High priority queue
+            ->delay(now()->addSeconds(2)); // Small delay to batch
+        
+        // Return 200 immediately (webhook acknowledged)
+        return response()->json([
+            'success' => true,
+            'webhook_id' => $webhookId,
+            'queued_at' => now()->toIso8601String()
+        ], 200);
+    }
+    
+    public function messageCreated(Request $request)
+    {
+        $webhookId = $request->input('id');
+        $payload = $request->all();
+        
+        ProcessMessageCreated::dispatch($webhookId, $payload)
+            ->onQueue('webhooks-normal')
+            ->delay(now()->addSeconds(5));
+        
+        return response()->json(['success' => true], 200);
+    }
+    
+    public function statusChanged(Request $request)
+    {
+        $webhookId = $request->input('id');
+        $payload = $request->all();
+        
+        ProcessConversationStatusChanged::dispatch($webhookId, $payload)
+            ->onQueue('webhooks-high')
+            ->delay(now()->addSeconds(1));
+        
+        return response()->json(['success' => true], 200);
+    }
+}
+
+// app/Jobs/ProcessConversationCreated.php
+class ProcessConversationCreated implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    
+    public $tries = 5;
+    public $backoff = [60, 120, 300, 600, 1800]; // Exponential backoff
+    public $timeout = 120;
+    
+    private string $webhookId;
+    private array $payload;
+    
+    public function __construct(string $webhookId, array $payload)
+    {
+        $this->webhookId = $webhookId;
+        $this->payload = $payload;
+    }
+    
+    public function handle(
+        KrayinApiService $krayinService,
+        ContactMappingService $mappingService
+    ) {
+        Log::info('Processing conversation_created webhook', [
+            'webhook_id' => $this->webhookId,
+            'conversation_id' => $this->payload['id']
+        ]);
+        
+        try {
+            DB::transaction(function() use ($krayinService, $mappingService) {
+                $contact = $this->payload['contact'];
+                
+                // Check if mapping exists (idempotency)
+                $mapping = ContactMapping::where('chatwoot_contact_id', $contact['id'])
+                    ->first();
+                
+                if ($mapping) {
+                    Log::info('Contact mapping already exists', [
+                        'chatwoot_contact_id' => $contact['id'],
+                        'krayin_lead_id' => $mapping->krayin_lead_id
+                    ]);
+                    return;
+                }
+                
+                // Create lead in Krayin
+                $leadData = [
+                    'title' => $contact['name'] . ' - Consulta',
+                    'person' => [
+                        'name' => $contact['name'],
+                        'emails' => [$contact['email']],
+                        'contact_numbers' => [$contact['phone_number']]
+                    ]
+                ];
+                
+                $lead = $krayinService->createLead($leadData);
+                
+                // Store mapping
+                $mapping = ContactMapping::create([
+                    'chatwoot_contact_id' => $contact['id'],
+                    'krayin_lead_id' => $lead['data']['id']
+                ]);
+                
+                // Create conversation mapping
+                ConversationMapping::create([
+                    'chatwoot_conversation_id' => $this->payload['id'],
+                    'krayin_lead_id' => $lead['data']['id'],
+                    'status' => $this->payload['status']
+                ]);
+                
+                Log::info('Lead created successfully', [
+                    'krayin_lead_id' => $lead['data']['id'],
+                    'chatwoot_contact_id' => $contact['id']
+                ]);
+            });
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to process conversation_created webhook', [
+                'webhook_id' => $this->webhookId,
+                'error' => $e->getMessage(),
+                'attempt' => $this->attempts()
+            ]);
+            
+            // Re-throw to trigger retry
+            throw $e;
+        }
+    }
+    
+    public function failed(\Throwable $exception)
+    {
+        Log::critical('Webhook processing failed permanently', [
+            'webhook_id' => $this->webhookId,
+            'error' => $exception->getMessage(),
+            'payload' => $this->payload
+        ]);
+        
+        // Store in dead letter queue for manual review
+        DB::table('failed_webhooks')->insert([
+            'webhook_id' => $this->webhookId,
+            'event_type' => 'conversation_created',
+            'payload' => json_encode($this->payload),
+            'error' => $exception->getMessage(),
+            'failed_at' => now()
+        ]);
+    }
+}
+```
+
+### 4. Horizontal Scaling Configuration
+
+```yaml
+# docker-compose.prod.yml (continued)
+services:
+  bridge:
+    image: your-registry/bridge:latest
+    deploy:
+      replicas: 3  # Run 3 instances behind load balancer
+      update_config:
+        parallelism: 1
+        delay: 30s
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    environment:
+      - APP_ENV=production
+      - DB_WRITE_HOST=pgbouncer
+      - DB_READ_HOST=postgres-replica
+      - REDIS_CLIENT=predis
+      - QUEUE_CONNECTION=redis
+    networks:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bridge.rule=Host(`bridge.yourdomain.com`)"
+      - "traefik.http.routers.bridge.entrypoints=websecure"
+      - "traefik.http.routers.bridge.tls.certresolver=letsencrypt"
+      - "traefik.http.services.bridge.loadbalancer.server.port=80"
+      - "traefik.http.services.bridge.loadbalancer.sticky.cookie=true"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Dedicated queue workers (separate from web)
+  bridge-worker:
+    image: your-registry/bridge:latest
+    deploy:
+      replicas: 2
+    command: php artisan queue:work redis --queue=webhooks-high,webhooks-normal --tries=5 --timeout=120
+    environment:
+      - APP_ENV=production
+      - DB_WRITE_HOST=pgbouncer
+      - REDIS_CLIENT=predis
+    networks:
+      - backend
+    depends_on:
+      - redis-master
+      - pgbouncer
+```
+
+### 5. Caching Strategy (COMPREHENSIVE)
+
+```php
+// app/Services/CachedKrayinApiService.php
+class CachedKrayinApiService extends KrayinApiService
+{
+    private const CACHE_TTL = [
+        'lead' => 300,        // 5 minutes
+        'pipeline' => 3600,   // 1 hour
+        'stages' => 86400,    // 24 hours
+    ];
+    
+    public function getLeadById(int $leadId): array
+    {
+        return Cache::tags(['leads'])->remember(
+            "lead:{$leadId}",
+            self::CACHE_TTL['lead'],
+            fn() => parent::getLeadById($leadId)
+        );
+    }
+    
+    public function updateLeadStage(int $leadId, int $stageId): array
+    {
+        $result = parent::updateLeadStage($leadId, $stageId);
+        
+        // Invalidate related caches
+        Cache::tags(['leads'])->forget("lead:{$leadId}");
+        Cache::tags(['conversations'])->flush("lead:{$leadId}:*");
+        
+        return $result;
+    }
+    
+    public function getPipelineStages(int $pipelineId): array
+    {
+        return Cache::tags(['pipelines'])->remember(
+            "pipeline:{$pipelineId}:stages",
+            self::CACHE_TTL['stages'],
+            fn() => parent->getPipelineStages($pipelineId)
+        );
+    }
+}
+
+// app/Services/ConversationCacheService.php
+class ConversationCacheService
+{
+    public function getConversationsForLead(int $leadId, array $filters = []): array
+    {
+        $cacheKey = $this->buildCacheKey($leadId, $filters);
+        
+        return Cache::tags(['conversations', "lead:{$leadId}"])->remember(
+            $cacheKey,
+            300, // 5 minutes
+            function() use ($leadId, $filters) {
+                return DB::table('conversation_mappings')
+                    ->where('krayin_lead_id', $leadId)
+                    ->when($filters['status'] ?? null, fn($q, $status) => $q->where('status', $status))
+                    ->orderBy('updated_at', 'desc')
+                    ->get();
+            }
+        );
+    }
+    
+    public function invalidateLeadConversations(int $leadId): void
+    {
+        Cache::tags(["lead:{$leadId}"])->flush();
+    }
+    
+    private function buildCacheKey(int $leadId, array $filters): string
+    {
+        $filterString = http_build_query($filters);
+        return "lead:{$leadId}:conversations:" . md5($filterString);
+    }
+}
+
+// config/cache.php
+'stores' => [
+    'redis' => [
+        'driver' => 'redis',
+        'connection' => 'cache',
+        'lock_connection' => 'default',
+    ],
+],
+
+'prefix' => env('CACHE_PREFIX', 'bridge_cache'),
+```
+
+---
+
+## Monitoring & Observability (PRODUCTION GRADE)
+
+### 1. Health Check Endpoints
+
+```php
+// app/Http/Controllers/HealthController.php
+class HealthController extends Controller
+{
+    public function index()
+    {
+        $checks = [
+            'database' => $this->checkDatabase(),
+            'redis' => $this->checkRedis(),
+            'krayin_api' => $this->checkKrayinApi(),
+            'chatwoot_api' => $this->checkChatwootApi(),
+            'queue' => $this->checkQueue(),
+        ];
+        
+        $healthy = collect($checks)->every(fn($check) => $check['status'] === 'ok');
+        
+        return response()->json([
+            'status' => $healthy ? 'healthy' : 'degraded',
+            'timestamp' => now()->toIso8601String(),
+            'checks' => $checks
+        ], $healthy ? 200 : 503);
+    }
+    
+    private function checkDatabase(): array
+    {
+        try {
+            DB::connection()->getPdo();
+            $time = DB::selectOne('SELECT NOW() as time')->time;
+            return ['status' => 'ok', 'message' => 'Database connected', 'timestamp' => $time];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+    
+    private function checkRedis(): array
+    {
+        try {
+            Redis::ping();
+            return ['status' => 'ok', 'message' => 'Redis connected'];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+    
+    private function checkKrayinApi(): array
+    {
+        try {
+            $start = microtime(true);
+            $response = Http::timeout(5)->get(config('services.krayin.base_url') . '/health');
+            $duration = round((microtime(true) - $start) * 1000, 2);
+            
+            return [
+                'status' => $response->successful() ? 'ok' : 'error',
+                'response_time_ms' => $duration,
+                'code' => $response->status()
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+    
+    private function checkQueue(): array
+    {
+        try {
+            $size = Redis::llen('queues:webhooks-high');
+            $status = $size > 1000 ? 'warning' : 'ok';
+            
+            return [
+                'status' => $status,
+                'queue_size' => $size,
+                'message' => $status === 'warning' ? 'Queue backlog detected' : 'Queue healthy'
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+}
+
+// routes/api.php
+Route::get('/health', [HealthController::class, 'index'])
