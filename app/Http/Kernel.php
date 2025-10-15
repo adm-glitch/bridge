@@ -66,8 +66,10 @@ class Kernel extends HttpKernel
         'throttle' => \App\Http\Middleware\ThrottleRequests::class,
         'throttle.webhooks' => \App\Http\Middleware\ThrottleRequests::class,
         'throttle.api' => \App\Http\Middleware\ThrottleRequests::class,
-        'throttle.auth' => \App\Http\Middleware\ThrottleRequests::class,
+        'throttle.auth' => \App\Http\Middleware\ThrottleAuth::class,
         'verify.chatwoot.signature' => \App\Http\Middleware\VerifyChatwootSignature::class,
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
+        'jwt.auth' => \App\Http\Middleware\JwtAuth::class,
+        'abilities' => \App\Http\Middleware\CheckAbilities::class,
     ];
 }
