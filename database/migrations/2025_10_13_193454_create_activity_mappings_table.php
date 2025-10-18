@@ -38,10 +38,11 @@ return new class extends Migration
             ");
         }
 
-        // Create indexes (applied to parent table and all partitions)
+        // Create unique constraint (must include partition key for partitioned tables)
         DB::statement('
-            CREATE UNIQUE INDEX idx_activity_mappings_chatwoot_message_id 
-            ON activity_mappings(chatwoot_message_id, created_at DESC)
+            ALTER TABLE activity_mappings 
+            ADD CONSTRAINT unique_activity_mappings_chatwoot_message_id 
+            UNIQUE (chatwoot_message_id, created_at)
         ');
 
         DB::statement('
@@ -198,7 +199,7 @@ return new class extends Migration
             DB::statement("DROP TABLE IF EXISTS {$partition->tablename}");
         }
 
-        // Drop the main table
+        // Drop the main table (this will also drop the unique constraint)
         Schema::dropIfExists('activity_mappings');
     }
 };
