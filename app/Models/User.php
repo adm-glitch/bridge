@@ -135,8 +135,7 @@ class User extends Authenticatable
      */
     public const ROLE_ADMIN = 'admin';
     public const ROLE_MANAGER = 'manager';
-    public const ROLE_AGENT = 'agent';
-    public const ROLE_VIEWER = 'viewer';
+    public const ROLE_USER = 'user';
 
     /**
      * Status constants
@@ -203,8 +202,7 @@ class User extends Authenticatable
         $validRoles = [
             self::ROLE_ADMIN,
             self::ROLE_MANAGER,
-            self::ROLE_AGENT,
-            self::ROLE_VIEWER,
+            self::ROLE_USER,
         ];
 
         if (!in_array($user->role, $validRoles)) {
@@ -379,25 +377,14 @@ class User extends Authenticatable
     }
 
     /**
-     * Scope: Get agent users.
+     * Scope: Get user role users.
      *
      * @param \Illuminate\Database\Eloquent\Builder $query
      * @return \Illuminate\Database\Eloquent\Builder
      */
-    public function scopeAgents($query)
+    public function scopeUsers($query)
     {
-        return $query->where('role', self::ROLE_AGENT);
-    }
-
-    /**
-     * Scope: Get viewer users.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @return \Illuminate\Database\Eloquent\Builder
-     */
-    public function scopeViewers($query)
-    {
-        return $query->where('role', self::ROLE_VIEWER);
+        return $query->where('role', self::ROLE_USER);
     }
 
     /**
@@ -645,8 +632,7 @@ class User extends Authenticatable
                     'pending_users' => $users->where('status', self::STATUS_PENDING)->count(),
                     'admin_users' => $users->where('role', self::ROLE_ADMIN)->count(),
                     'manager_users' => $users->where('role', self::ROLE_MANAGER)->count(),
-                    'agent_users' => $users->where('role', self::ROLE_AGENT)->count(),
-                    'viewer_users' => $users->where('role', self::ROLE_VIEWER)->count(),
+                    'user_users' => $users->where('role', self::ROLE_USER)->count(),
                     'role_distribution' => $users->groupBy('role')->map->count(),
                     'status_distribution' => $users->groupBy('status')->map->count(),
                 ];
@@ -715,23 +701,13 @@ class User extends Authenticatable
     }
 
     /**
-     * Check if user is agent.
+     * Check if user is regular user.
      *
      * @return bool
      */
-    public function isAgent(): bool
+    public function isUser(): bool
     {
-        return $this->role === self::ROLE_AGENT;
-    }
-
-    /**
-     * Check if user is viewer.
-     *
-     * @return bool
-     */
-    public function isViewer(): bool
-    {
-        return $this->role === self::ROLE_VIEWER;
+        return $this->role === self::ROLE_USER;
     }
 
     /**
@@ -887,8 +863,7 @@ class User extends Authenticatable
             'is_pending' => $this->isPending(),
             'is_admin' => $this->isAdmin(),
             'is_manager' => $this->isManager(),
-            'is_agent' => $this->isAgent(),
-            'is_viewer' => $this->isViewer(),
+            'is_user' => $this->isUser(),
             'last_login_at' => $this->last_login_at,
             'last_login_ip' => $this->last_login_ip,
             'last_login_age_minutes' => $this->getLastLoginAgeMinutes(),
@@ -1000,8 +975,7 @@ class User extends Authenticatable
         return [
             self::ROLE_ADMIN,
             self::ROLE_MANAGER,
-            self::ROLE_AGENT,
-            self::ROLE_VIEWER,
+            self::ROLE_USER,
         ];
     }
 
@@ -1030,8 +1004,7 @@ class User extends Authenticatable
         return [
             self::ROLE_ADMIN => 'Administrator',
             self::ROLE_MANAGER => 'Manager',
-            self::ROLE_AGENT => 'Agent',
-            self::ROLE_VIEWER => 'Viewer',
+            self::ROLE_USER => 'User',
         ];
     }
 
