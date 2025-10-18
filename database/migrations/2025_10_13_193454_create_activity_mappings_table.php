@@ -38,12 +38,15 @@ return new class extends Migration
             ");
         }
 
-        // Create unique index (must include partition key for partitioned tables)
+        // Create unique constraint (must include partition key for partitioned tables)
         // Note: This must be done after all partitions are created
-        DB::statement('
-            CREATE UNIQUE INDEX idx_activity_mappings_chatwoot_message_id 
-            ON activity_mappings(chatwoot_message_id, created_at)
-        ');
+        // Using a different approach to avoid caching issues
+        echo "Creating unique constraint with created_at column...\n";
+
+        // Try using Laravel's Schema builder approach
+        Schema::table('activity_mappings', function (Blueprint $table) {
+            $table->unique(['chatwoot_message_id', 'created_at'], 'unique_activity_mappings_chatwoot_message_id');
+        });
 
         DB::statement('
             CREATE INDEX idx_activity_mappings_krayin_activity_id 
