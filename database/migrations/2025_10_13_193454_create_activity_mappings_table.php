@@ -41,7 +41,7 @@ return new class extends Migration
         // Create indexes (applied to parent table and all partitions)
         DB::statement('
             CREATE UNIQUE INDEX idx_activity_mappings_chatwoot_message_id 
-            ON activity_mappings(chatwoot_message_id)
+            ON activity_mappings(chatwoot_message_id, created_at DESC)
         ');
 
         DB::statement('
