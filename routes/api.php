@@ -66,7 +66,7 @@ Route::prefix('v1')->group(function () {
             ->middleware(['jwt.auth'])
             ->name('auth.me');
 
-        Route::get('/validate', [AuthController::class, 'validate'])
+        Route::get('/validate', [AuthController::class, 'validateToken'])
             ->middleware(['throttle.auth:api'])
             ->name('auth.validate');
     });

@@ -342,7 +342,7 @@ class AuthController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-    public function validate(Request $request): JsonResponse
+    public function validateToken(Request $request): JsonResponse
     {
         $token = $request->bearerToken();
 
