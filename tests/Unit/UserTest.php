@@ -29,7 +29,7 @@ class UserTest extends TestCase
             'email' => 'john@example.com',
             'password' => 'password123',
             'phone' => '+1234567890',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'timezone' => 'UTC',
             'language' => 'en',
@@ -40,7 +40,7 @@ class UserTest extends TestCase
         $this->assertInstanceOf(User::class, $user);
         $this->assertEquals('John Doe', $user->name);
         $this->assertEquals('john@example.com', $user->email);
-        $this->assertEquals(User::ROLE_AGENT, $user->role);
+        $this->assertEquals(User::ROLE_USER, $user->role);
         $this->assertEquals(User::STATUS_ACTIVE, $user->status);
     }
 
@@ -77,7 +77,7 @@ class UserTest extends TestCase
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'preferences' => ['theme' => 'dark'],
             'permissions' => ['read', 'write'],
@@ -120,7 +120,7 @@ class UserTest extends TestCase
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => 'invalid_status',
         ]);
     }
@@ -138,7 +138,7 @@ class UserTest extends TestCase
             'name' => 'John Doe',
             'email' => 'invalid_email',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
     }
@@ -157,7 +157,7 @@ class UserTest extends TestCase
             'email' => 'john@example.com',
             'password' => 'password123',
             'phone' => 'invalid_phone',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
     }
@@ -181,7 +181,7 @@ class UserTest extends TestCase
             'name' => 'Agent User',
             'email' => 'agent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -201,7 +201,7 @@ class UserTest extends TestCase
             'name' => 'Active User',
             'email' => 'active@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -209,7 +209,7 @@ class UserTest extends TestCase
             'name' => 'Inactive User',
             'email' => 'inactive@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_INACTIVE,
         ]);
 
@@ -229,7 +229,7 @@ class UserTest extends TestCase
             'name' => 'Active User',
             'email' => 'active@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -237,7 +237,7 @@ class UserTest extends TestCase
             'name' => 'Inactive User',
             'email' => 'inactive@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_INACTIVE,
         ]);
 
@@ -265,7 +265,7 @@ class UserTest extends TestCase
             'name' => 'Agent User',
             'email' => 'agent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -285,7 +285,7 @@ class UserTest extends TestCase
             'name' => 'Recent User',
             'email' => 'recent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subDays(3),
         ]);
@@ -294,7 +294,7 @@ class UserTest extends TestCase
             'name' => 'Old User',
             'email' => 'old@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subDays(10),
         ]);
@@ -315,7 +315,7 @@ class UserTest extends TestCase
             'name' => 'Company User',
             'email' => 'user@company.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -323,7 +323,7 @@ class UserTest extends TestCase
             'name' => 'Personal User',
             'email' => 'user@gmail.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -343,7 +343,7 @@ class UserTest extends TestCase
             'name' => 'UTC User',
             'email' => 'utc@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'timezone' => 'UTC',
         ]);
@@ -352,7 +352,7 @@ class UserTest extends TestCase
             'name' => 'EST User',
             'email' => 'est@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'timezone' => 'America/New_York',
         ]);
@@ -373,7 +373,7 @@ class UserTest extends TestCase
             'name' => 'English User',
             'email' => 'en@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'language' => 'en',
         ]);
@@ -382,7 +382,7 @@ class UserTest extends TestCase
             'name' => 'Spanish User',
             'email' => 'es@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'language' => 'es',
         ]);
@@ -403,7 +403,7 @@ class UserTest extends TestCase
             'name' => 'Active User',
             'email' => 'active@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -411,7 +411,7 @@ class UserTest extends TestCase
             'name' => 'Inactive User',
             'email' => 'inactive@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_INACTIVE,
         ]);
 
@@ -438,7 +438,7 @@ class UserTest extends TestCase
             'name' => 'Agent User',
             'email' => 'agent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -465,7 +465,7 @@ class UserTest extends TestCase
             'name' => 'Agent User',
             'email' => 'agent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -474,58 +474,32 @@ class UserTest extends TestCase
     }
 
     /**
-     * Test is agent method.
+     * Test is user method.
      *
      * @return void
      */
-    public function test_is_agent()
+    public function test_is_user()
     {
-        $agentUser = User::create([
-            'name' => 'Agent User',
-            'email' => 'agent@example.com',
+        $userUser = User::create([
+            'name' => 'User User',
+            'email' => 'user@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
-        $viewerUser = User::create([
-            'name' => 'Viewer User',
-            'email' => 'viewer@example.com',
+        $adminUser = User::create([
+            'name' => 'Admin User',
+            'email' => 'admin@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_VIEWER,
+            'role' => User::ROLE_ADMIN,
             'status' => User::STATUS_ACTIVE,
         ]);
 
-        $this->assertTrue($agentUser->isAgent());
-        $this->assertFalse($viewerUser->isAgent());
+        $this->assertTrue($userUser->isUser());
+        $this->assertFalse($adminUser->isUser());
     }
 
-    /**
-     * Test is viewer method.
-     *
-     * @return void
-     */
-    public function test_is_viewer()
-    {
-        $viewerUser = User::create([
-            'name' => 'Viewer User',
-            'email' => 'viewer@example.com',
-            'password' => 'password123',
-            'role' => User::ROLE_VIEWER,
-            'status' => User::STATUS_ACTIVE,
-        ]);
-
-        $agentUser = User::create([
-            'name' => 'Agent User',
-            'email' => 'agent@example.com',
-            'password' => 'password123',
-            'role' => User::ROLE_AGENT,
-            'status' => User::STATUS_ACTIVE,
-        ]);
-
-        $this->assertTrue($viewerUser->isViewer());
-        $this->assertFalse($agentUser->isViewer());
-    }
 
     /**
      * Test has permission method.
@@ -538,7 +512,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'permissions' => ['read', 'write', 'delete'],
         ]);
@@ -559,7 +533,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'permissions' => ['read', 'write'],
         ]);
@@ -580,7 +554,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'permissions' => ['read', 'write', 'delete'],
         ]);
@@ -601,7 +575,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subMinutes(30),
         ]);
@@ -621,7 +595,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subHours(5),
         ]);
@@ -641,7 +615,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subDays(3),
         ]);
@@ -661,7 +635,7 @@ class UserTest extends TestCase
             'name' => 'Recent User',
             'email' => 'recent@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subHours(5),
         ]);
@@ -670,7 +644,7 @@ class UserTest extends TestCase
             'name' => 'Old User',
             'email' => 'old@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subDays(2),
         ]);
@@ -690,7 +664,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -708,7 +682,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -726,7 +700,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
             'last_login_at' => now()->subHours(5),
             'permissions' => ['read', 'write'],
@@ -737,8 +711,8 @@ class UserTest extends TestCase
         $this->assertIsArray($summary);
         $this->assertEquals('Test User', $summary['name']);
         $this->assertEquals('test@example.com', $summary['email']);
-        $this->assertEquals(User::ROLE_AGENT, $summary['role']);
-        $this->assertEquals('Agent', $summary['role_description']);
+        $this->assertEquals(User::ROLE_USER, $summary['role']);
+        $this->assertEquals('User', $summary['role_description']);
         $this->assertEquals(User::STATUS_ACTIVE, $summary['status']);
         $this->assertEquals('Active', $summary['status_description']);
         $this->assertTrue($summary['is_active']);
@@ -747,8 +721,7 @@ class UserTest extends TestCase
         $this->assertFalse($summary['is_pending']);
         $this->assertFalse($summary['is_admin']);
         $this->assertFalse($summary['is_manager']);
-        $this->assertTrue($summary['is_agent']);
-        $this->assertFalse($summary['is_viewer']);
+        $this->assertTrue($summary['is_user']);
         $this->assertEquals(5, $summary['last_login_age_hours']);
         $this->assertTrue($summary['has_logged_in_recently']);
         $this->assertEquals(['read', 'write'], $summary['permissions']);
@@ -766,7 +739,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -789,7 +762,7 @@ class UserTest extends TestCase
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password123',
-            'role' => User::ROLE_AGENT,
+            'role' => User::ROLE_USER,
             'status' => User::STATUS_ACTIVE,
         ]);
 
@@ -821,8 +794,7 @@ class UserTest extends TestCase
 
         $this->assertContains(User::ROLE_ADMIN, $roles);
         $this->assertContains(User::ROLE_MANAGER, $roles);
-        $this->assertContains(User::ROLE_AGENT, $roles);
-        $this->assertContains(User::ROLE_VIEWER, $roles);
+        $this->assertContains(User::ROLE_USER, $roles);
     }
 
     /**
@@ -851,8 +823,7 @@ class UserTest extends TestCase
 
         $this->assertEquals('Administrator', $descriptions[User::ROLE_ADMIN]);
         $this->assertEquals('Manager', $descriptions[User::ROLE_MANAGER]);
-        $this->assertEquals('Agent', $descriptions[User::ROLE_AGENT]);
-        $this->assertEquals('Viewer', $descriptions[User::ROLE_VIEWER]);
+        $this->assertEquals('User', $descriptions[User::ROLE_USER]);
     }
 
     /**

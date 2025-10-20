@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
+use Firebase\JWT\ExpiredException;
+use Firebase\JWT\SignatureInvalidException;
+
+// Suppress IDE type warnings for Firebase JWT
 use Carbon\Carbon;
 
 class AuthService
@@ -49,7 +53,7 @@ class AuthService
             }
 
             // Check if user is active
-            if (!$user->is_active) {
+            if (!$user->isActive()) {
                 return [
                     'success' => false,
                     'message' => 'Account is deactivated',
@@ -198,13 +202,13 @@ class AuthService
                 'expires_at' => Carbon::createFromTimestamp($payload['exp'])->toIso8601String(),
                 'abilities' => $payload['abilities'] ?? []
             ];
-        } catch (\Firebase\JWT\ExpiredException $e) {
+        } catch (ExpiredException $e) {
             return [
                 'valid' => false,
                 'message' => 'Token has expired',
                 'error_code' => 'TOKEN_EXPIRED'
             ];
-        } catch (\Firebase\JWT\SignatureInvalidException $e) {
+        } catch (SignatureInvalidException $e) {
             return [
                 'valid' => false,
                 'message' => 'Invalid token signature',
@@ -243,7 +247,7 @@ class AuthService
         try {
             $user = User::find($validation['user_id']);
 
-            if (!$user || !$user->is_active) {
+            if (!$user || !$user->isActive()) {
                 return [
                     'success' => false,
                     'message' => 'User not found or inactive',

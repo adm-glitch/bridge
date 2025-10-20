@@ -64,7 +64,7 @@ class JwtAuth
             }
 
             // Check if user is still active
-            if (!$user->is_active) {
+            if (!$user->isActive()) {
                 return response()->json([
                     'success' => false,
                     'error' => 'Account is deactivated',
