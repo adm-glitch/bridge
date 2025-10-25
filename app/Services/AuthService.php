@@ -329,6 +329,9 @@ class AuthService
                     $abilities = array_merge($abilities, $this->getRoleAbilities($role));
                 }
 
+                // IMPORTANT: Load relationships before getting permissions
+                $user->loadMissing('permissions', 'roles.permissions');
+
                 // Get direct permissions
                 $permissions = $user->getAllPermissions();
                 if ($permissions) {
