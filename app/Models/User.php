@@ -122,6 +122,28 @@ class User extends Authenticatable
     }
 
     /**
+     * Override getAllPermissions to handle null permissions gracefully
+     */
+    public function getAllPermissions()
+    {
+        try {
+            $permissions = $this->permissions;
+
+            if (!$permissions) {
+                return collect();
+            }
+
+            if (!is_a($this, \Spatie\Permission\Contracts\Permission::class)) {
+                $permissions = $permissions->merge($this->getPermissionsViaRoles());
+            }
+
+            return $permissions->sort()->values();
+        } catch (\Exception $e) {
+            return collect();
+        }
+    }
+
+    /**
      * The attributes that should be hidden for serialization.
      *
      * @var array<int, string>
