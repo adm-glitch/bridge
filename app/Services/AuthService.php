@@ -329,17 +329,17 @@ class AuthService
                     $abilities = array_merge($abilities, $this->getRoleAbilities($role));
                 }
 
-                // IMPORTANT: Load relationships before getting permissions
-                $user->loadMissing('permissions', 'roles.permissions');
-
-                // Get direct permissions
-                $permissions = $user->getAllPermissions();
-                if ($permissions) {
-                    foreach ($permissions as $permission) {
-                        $abilities[] = $permission->name;
+                try {
+                    // Get direct permissions
+                    $permissions = $user->getAllPermissions();
+                    if ($permissions) {
+                        foreach ($permissions as $permission) {
+                            $abilities[] = $permission->name;
+                        }
                     }
+                } catch (\Exception $e) {
+                    Log::warning('Could not load user permissions', ['user_id' => $user->id, 'error' => $e->getMessage()]);
                 }
-
                 return array_unique($abilities);
             }
         );
