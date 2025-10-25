@@ -337,7 +337,7 @@ class AuthService
                 // Get direct permissions
                 try {
                     $permissions = $user->getAllPermissions();
-                    if ($permissions) {
+                    if ($permissions && $permissions->isNotEmpty()) {
                         foreach ($permissions as $permission) {
                             $abilities[] = $permission->name;
                         }

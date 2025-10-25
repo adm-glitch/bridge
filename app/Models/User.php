@@ -114,6 +114,14 @@ class User extends Authenticatable
     ];
 
     /**
+     * Get the default guard name for the model.
+     */
+    public function getDefaultGuardName(): string
+    {
+        return 'web';
+    }
+
+    /**
      * The attributes that should be hidden for serialization.
      *
      * @var array<int, string>
