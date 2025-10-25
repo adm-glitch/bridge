@@ -324,13 +324,18 @@ class AuthService
                 $abilities = [];
 
                 // Get role-based abilities
-                $roles = $user->getRoleNames();
-                foreach ($roles as $role) {
-                    $abilities = array_merge($abilities, $this->getRoleAbilities($role));
+                try {
+                    $roles = $user->getRoleNames();
+                    foreach ($roles as $role) {
+                        $abilities = array_merge($abilities, $this->getRoleAbilities($role));
+                    }
+                } catch (\Exception $e) {
+                    // Fallback to simple role-based abilities if Spatie permissions aren't set up
+                    $abilities = $this->getRoleAbilities($user->role);
                 }
 
+                // Get direct permissions
                 try {
-                    // Get direct permissions
                     $permissions = $user->getAllPermissions();
                     if ($permissions) {
                         foreach ($permissions as $permission) {
