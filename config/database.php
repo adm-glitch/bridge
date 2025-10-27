@@ -277,13 +277,6 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
-
-            // Sentinel endpoints for high availability
-            'sentinel' => [
-                ['tcp://redis-sentinel-1:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-2:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-3:26379?timeout=0.5'],
-            ],
         ],
 
         /*
@@ -301,13 +294,6 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
-
-            // Sentinel endpoints for cache
-            'sentinel' => [
-                ['tcp://redis-sentinel-1:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-2:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-3:26379?timeout=0.5'],
-            ],
         ],
 
         /*
@@ -325,13 +311,6 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_QUEUE_DB', '2'),
-
-            // Sentinel endpoints for queue
-            'sentinel' => [
-                ['tcp://redis-sentinel-1:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-2:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-3:26379?timeout=0.5'],
-            ],
         ],
 
         /*
@@ -349,13 +328,6 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_SESSION_DB', '3'),
-
-            // Sentinel endpoints for sessions
-            'sentinel' => [
-                ['tcp://redis-sentinel-1:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-2:26379?timeout=0.5'],
-                ['tcp://redis-sentinel-3:26379?timeout=0.5'],
-            ],
         ],
 
     ],
