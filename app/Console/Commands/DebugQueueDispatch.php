@@ -134,42 +134,53 @@ class DebugQueueDispatch extends Command
 
     private function testSimpleJob()
     {
-        // Create a simple test job
-        $job = new class implements \Illuminate\Contracts\Queue\ShouldQueue {
-            use \Illuminate\Foundation\Bus\Dispatchable, 
-                \Illuminate\Queue\InteractsWithQueue, 
-                \Illuminate\Queue\SerializesModels;
-
-            public $tries = 3;
-            public $timeout = 60;
-
-            public function __construct(public string $testData = 'test') {}
-
-            public function handle()
-            {
-                \Illuminate\Support\Facades\Log::info('TestDebugJob executed', ['test_data' => $this->testData]);
-            }
-        };
-
         try {
-            // Test 1: Direct dispatch
+            // Test 1: Direct dispatch with ProcessConversationCreated
             $this->line('   Testing direct dispatch...');
-            $testJob = new $job('direct_test');
-            $jobId = $testJob->dispatch();
-            $this->line('   Direct dispatch job ID: ' . $jobId);
+            $testPayload = [
+                'id' => 'test-conversation-' . time(),
+                'contact' => [
+                    'id' => 'test-contact-' . time(),
+                    'name' => 'Test Contact',
+                    'email' => 'test@example.com',
+                    'phone_number' => '+1234567890'
+                ],
+                'status' => 'open',
+                'created_at' => now()->toISOString()
+            ];
+
+            $job = new ProcessConversationCreated(
+                'test-webhook-' . time(),
+                $testPayload,
+                '127.0.0.1',
+                'DebugCommand/1.0'
+            );
+
+            $pendingDispatch = $job->dispatch();
+            $this->line('   Direct dispatch: ' . get_class($pendingDispatch));
 
             // Test 2: Dispatcher dispatch
             $this->line('   Testing dispatcher dispatch...');
             $dispatcher = app('Illuminate\Contracts\Bus\Dispatcher');
-            $testJob2 = new $job('dispatcher_test');
-            $jobId2 = $dispatcher->dispatch($testJob2);
+            $job2 = new ProcessConversationCreated(
+                'test-webhook-2-' . time(),
+                $testPayload,
+                '127.0.0.1',
+                'DebugCommand/1.0'
+            );
+            $jobId2 = $dispatcher->dispatch($job2);
             $this->line('   Dispatcher dispatch job ID: ' . $jobId2);
 
             // Test 3: Queue push
             $this->line('   Testing queue push...');
             $queue = app('queue')->connection();
-            $testJob3 = new $job('queue_push_test');
-            $jobId3 = $queue->push($testJob3);
+            $job3 = new ProcessConversationCreated(
+                'test-webhook-3-' . time(),
+                $testPayload,
+                '127.0.0.1',
+                'DebugCommand/1.0'
+            );
+            $jobId3 = $queue->push($job3);
             $this->line('   Queue push job ID: ' . $jobId3);
 
             // Wait a moment for jobs to be processed

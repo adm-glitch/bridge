@@ -251,14 +251,6 @@ return [
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
             'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_') . '_database_'),
-
-            // Sentinel configuration for high availability
-            'replication' => env('REDIS_REPLICATION', 'sentinel'),
-            'service' => env('REDIS_SENTINEL_SERVICE', 'mymaster'),
-            'parameters' => [
-                'password' => env('REDIS_PASSWORD'),
-                'database' => 0,
-            ],
         ],
 
         /*
