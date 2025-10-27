@@ -156,8 +156,9 @@ class DebugQueueDispatch extends Command
                 'DebugCommand/1.0'
             );
 
-            $pendingDispatch = $job->dispatch();
-            $this->line('   Direct dispatch: ' . get_class($pendingDispatch));
+            $dispatcher = app('Illuminate\Contracts\Bus\Dispatcher');
+            $jobId = $dispatcher->dispatch($job);
+            $this->line('   Direct dispatch job ID: ' . $jobId);
 
             // Test 2: Dispatcher dispatch
             $this->line('   Testing dispatcher dispatch...');
