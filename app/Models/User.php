@@ -133,6 +133,11 @@ class User extends Authenticatable
                 return collect();
             }
 
+            // Convert array to collection if needed
+            if (is_array($permissions)) {
+                $permissions = collect($permissions);
+            }
+
             if (!is_a($this, \Spatie\Permission\Contracts\Permission::class)) {
                 $permissions = $permissions->merge($this->getPermissionsViaRoles());
             }

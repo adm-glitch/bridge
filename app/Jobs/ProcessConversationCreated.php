@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 
 class ProcessConversationCreated implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, SerializesModels;
+    use Dispatchable, InteractsWithQueue, SerializesModels, Queueable;
 
     public $tries = 5;
     public $backoff = [60, 120, 300, 600, 1800]; // Exponential backoff: 1min, 2min, 5min, 10min, 30min
