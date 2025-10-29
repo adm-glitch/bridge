@@ -60,11 +60,11 @@ return [
             'max_redirects' => env('KRAYIN_MAX_REDIRECTS', 3),
         ],
         'endpoints' => [
-            'leads' => env('KRAYIN_LEADS_ENDPOINT', '/api/leads'),
-            'activities' => env('KRAYIN_ACTIVITIES_ENDPOINT', '/api/activities'),
-            'pipelines' => env('KRAYIN_PIPELINES_ENDPOINT', '/api/pipelines'),
-            'stages' => env('KRAYIN_STAGES_ENDPOINT', '/api/stages'),
-            'health' => env('KRAYIN_HEALTH_ENDPOINT', '/health'),
+            'leads' => env('KRAYIN_LEADS_ENDPOINT', '/api/v1/leads'),
+            'activities' => env('KRAYIN_ACTIVITIES_ENDPOINT', '/api/v1/activities'),
+            'pipelines' => env('KRAYIN_PIPELINES_ENDPOINT', '/api/v1/pipelines'),
+            'stages' => env('KRAYIN_STAGES_ENDPOINT', '/api/v1/stages'),
+            'health' => env('KRAYIN_HEALTH_ENDPOINT', '/api/v1/health'),
         ],
     ],
 
