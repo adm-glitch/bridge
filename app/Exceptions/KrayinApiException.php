@@ -18,7 +18,7 @@ class KrayinApiException extends Exception
     protected ?RequestException $originalException;
     protected string $operation;
     protected int $attempts;
-    protected ?int $httpStatusCode;
+    protected ?int $httpStatusCode = null;
     protected ?string $responseBody;
 
     /**
