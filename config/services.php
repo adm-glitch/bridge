@@ -42,8 +42,10 @@ return [
     */
 
     'krayin' => [
-        'base_url' => env('KRAYIN_URL', 'https://krayin.yourdomain.com'),
+        'url' => env('KRAYIN_URL', 'https://krayin.yourdomain.com'),
         'api_token' => env('KRAYIN_API_TOKEN'),
+        'default_pipeline_id' => env('KRAYIN_DEFAULT_PIPELINE_ID', 1),
+        'default_stage_id' => env('KRAYIN_DEFAULT_STAGE_ID', 1),
         'timeout' => env('KRAYIN_API_TIMEOUT', 10),
         'retry_attempts' => env('KRAYIN_API_RETRY_ATTEMPTS', 3),
         'retry_delay' => env('KRAYIN_API_RETRY_DELAY', 1000),
