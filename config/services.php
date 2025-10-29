@@ -42,7 +42,7 @@ return [
     */
 
     'krayin' => [
-        'url' => env('KRAYIN_URL', 'https://krayin.yourdomain.com'),
+        'base_url' => env('KRAYIN_URL', 'https://krayin.yourdomain.com'),
         'api_token' => env('KRAYIN_API_TOKEN'),
         'default_pipeline_id' => env('KRAYIN_DEFAULT_PIPELINE_ID', 1),
         'default_stage_id' => env('KRAYIN_DEFAULT_STAGE_ID', 1),
