@@ -108,13 +108,17 @@ class KrayinApiException extends Exception
      */
     public function isRetryable(): bool
     {
+        // If no status code, treat as retryable (network error)
+        if ($this->httpStatusCode === null) {
+            return true;
+        }
         // Don't retry client errors (4xx) except for rate limiting
         if ($this->httpStatusCode >= 400 && $this->httpStatusCode < 500) {
             return $this->httpStatusCode === 429; // Rate limiting
         }
 
         // Retry server errors (5xx) and network issues
-        return $this->httpStatusCode >= 500 || $this->httpStatusCode === null;
+        return $this->httpStatusCode >= 500;
     }
 
     /**
