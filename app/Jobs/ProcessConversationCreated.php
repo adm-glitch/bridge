@@ -181,13 +181,21 @@ class ProcessConversationCreated implements ShouldQueue
      */
     private function buildLeadData(array $contact): array
     {
+        $personData = ['name' => $contact['name']];
+
+        // Only include emails if present
+        if (!empty($contact['email'])) {
+            $personData['emails'] = [['value' => $contact['email'], 'label' => 'work']];
+        }
+
+        // Only include contact_numbers if present
+        if (!empty($contact['phone_number'])) {
+            $personData['contact_numbers'] = [['value' => $contact['phone_number'], 'label' => 'work']];
+        }
+
         return [
             'title' => $contact['name'] . ' - Consulta via Chat',
-            'person' => [
-                'name' => $contact['name'],
-                'emails' => $contact['email'] ? [$contact['email']] : [],
-                'contact_numbers' => $contact['phone_number'] ? [$contact['phone_number']] : []
-            ],
+            'person' => $personData,
             'lead_pipeline_id' => config('services.krayin.default_pipeline_id', 1),
             'lead_pipeline_stage_id' => config('services.krayin.default_stage_id', 1),
             'custom_fields' => [
